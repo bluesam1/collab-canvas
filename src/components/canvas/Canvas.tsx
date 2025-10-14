@@ -37,7 +37,7 @@ export function Canvas({ selectedColor }: CanvasProps) {
   const [newRectEnd, setNewRectEnd] = useState<{ x: number; y: number } | null>(null);
 
   // Canvas context and user context
-  const { objects, selectedIds, isLoading, createObject, updateObject, selectObject, deleteObject } = useCanvas();
+  const { objects, selectedIds, isLoading, mode, setMode, createObject, updateObject, selectObject, deleteObject } = useCanvas();
   const { cursors, updateCursor } = usePresence();
   const authContext = useContext(UserContext);
 
@@ -57,18 +57,30 @@ export function Canvas({ selectedColor }: CanvasProps) {
   // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't handle shortcuts if typing in an input field
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+        return;
+      }
+
       if (e.key === 'Escape') {
         selectObject(null);
       } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.length > 0) {
         // Delete the selected rectangle
         e.preventDefault(); // Prevent browser back navigation on Backspace
         deleteObject(selectedIds[0]);
+      } else if (e.key.toLowerCase() === 'v') {
+        // Switch to Pan mode
+        setMode('pan');
+      } else if (e.key.toLowerCase() === 'r') {
+        // Switch to Rectangle mode
+        setMode('rectangle');
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectObject, deleteObject, selectedIds]);
+  }, [selectObject, deleteObject, selectedIds, setMode]);
 
   // Handle mouse down for panning or rectangle creation
   const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
@@ -79,24 +91,34 @@ export function Canvas({ selectedColor }: CanvasProps) {
       // Deselect on empty click
       selectObject(null);
 
-      // Start creating rectangle if left button
-      if (e.evt.button === 0) {
+      // Handle based on current mode
+      if (e.evt.button === 0) {  // Left mouse button
         const stage = stageRef.current;
         if (stage) {
           const pos = stage.getPointerPosition();
           if (pos) {
-            // Convert screen coordinates to world coordinates
-            const worldPos = {
-              x: (pos.x - stage.x()) / stage.scaleX(),
-              y: (pos.y - stage.y()) / stage.scaleY(),
-            };
-            setNewRectStart(worldPos);
-            setIsCreating(true);
+            if (mode === 'rectangle') {
+              // Rectangle mode: Start creating rectangle
+              const worldPos = {
+                x: (pos.x - stage.x()) / stage.scaleX(),
+                y: (pos.y - stage.y()) / stage.scaleY(),
+              };
+              setNewRectStart(worldPos);
+              setIsCreating(true);
+            } else if (mode === 'pan') {
+              // Pan mode: Start panning
+              setIsPanning(true);
+              const stagePos = stage.position();
+              setDragStart({
+                x: e.evt.clientX - stagePos.x,
+                y: e.evt.clientY - stagePos.y,
+              });
+            }
           }
         }
       }
     } else {
-      // Start panning if middle button or when not creating
+      // Middle button always pans regardless of mode
       if (e.evt.button === 1) {
         setIsPanning(true);
         const stage = stageRef.current;
@@ -340,7 +362,15 @@ export function Canvas({ selectedColor }: CanvasProps) {
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         onWheel={handleWheel}
-        style={{ cursor: isPanning ? 'grabbing' : isCreating ? 'crosshair' : 'grab' }}
+        style={{ 
+          cursor: isPanning 
+            ? 'grabbing' 
+            : isCreating 
+            ? 'crosshair' 
+            : mode === 'rectangle' 
+            ? 'crosshair' 
+            : 'grab'
+        }}
       >
         {/* Grid layer */}
         <Layer listening={false}>
@@ -411,8 +441,15 @@ export function Canvas({ selectedColor }: CanvasProps) {
               <span className="font-semibold">Selected:</span> {selectedIds.length}
             </div>
           )}
+          <div>
+            <span className="font-semibold">Mode:</span>{' '}
+            {mode === 'pan' ? '✋ Pan' : '⬛ Rectangle'}
+          </div>
           <div className="text-xs text-gray-600 mt-1">
-            Click & drag to create • Click to select • Drag to move • Del to delete
+            {mode === 'pan' 
+              ? 'Click & drag to pan • V=Pan • R=Rectangle'
+              : 'Click & drag to create • Click to select • Del to delete'
+            }
           </div>
         </div>
       </div>

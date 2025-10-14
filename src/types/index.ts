@@ -27,7 +27,9 @@ export interface AuthContextType {
   clearError: () => void;
 }
 
-// Canvas types (for future use)
+// Canvas types
+export type CanvasMode = 'pan' | 'rectangle';
+
 export interface Rectangle {
   id: string;
   x: number;
@@ -44,6 +46,7 @@ export interface CanvasState {
   objects: Rectangle[];
   selectedIds: string[];
   isLoading: boolean;
+  mode: CanvasMode;
 }
 
 // Presence types (for future use)
@@ -74,6 +77,8 @@ export interface CanvasContextType {
   objects: Rectangle[];
   selectedIds: string[];
   isLoading: boolean;
+  mode: CanvasMode;
+  setMode: (mode: CanvasMode) => void;
   createObject: (object: Omit<Rectangle, 'id' | 'createdAt' | 'updatedAt'>) => void;
   updateObject: (id: string, updates: Partial<Rectangle>) => void;
   deleteObject: (id: string) => void;

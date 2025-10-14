@@ -1,6 +1,6 @@
 import { createContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
-import type { Rectangle, CanvasContextType } from '../types';
+import type { Rectangle, CanvasContextType, CanvasMode } from '../types';
 import { 
   subscribeToObjects, 
   createObject as createFirebaseObject,
@@ -21,6 +21,7 @@ export const CanvasContextProvider = ({ children }: CanvasContextProviderProps) 
   const [objects, setObjects] = useState<Rectangle[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [mode, setMode] = useState<CanvasMode>('pan'); // Default to pan mode
 
   // Set up Firebase listener for real-time sync
   useEffect(() => {
@@ -147,6 +148,8 @@ export const CanvasContextProvider = ({ children }: CanvasContextProviderProps) 
     objects,
     selectedIds,
     isLoading,
+    mode,
+    setMode,
     createObject,
     updateObject,
     deleteObject,

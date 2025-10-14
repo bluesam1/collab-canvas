@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { Hand, Square } from 'lucide-react';
 import { ColorPalette } from './ColorPalette';
 import { DeleteButton } from './DeleteButton';
+import { ModeButton } from './ModeButton';
+import { useCanvas } from '../../hooks/useCanvas';
 
 interface ToolbarProps {
   selectedColor: string;
@@ -8,13 +10,7 @@ interface ToolbarProps {
 }
 
 export function Toolbar({ selectedColor, onColorChange }: ToolbarProps) {
-  const [isCreatingMode, setIsCreatingMode] = useState(false);
-
-  const handleColorSelect = (color: string) => {
-    onColorChange(color);
-    // Automatically enter creating mode when a color is selected
-    setIsCreatingMode(true);
-  };
+  const { mode, setMode } = useCanvas();
 
   return (
     <div className="absolute top-20 left-4 z-20 bg-white/95 backdrop-blur-sm rounded-xl shadow-xl p-4 min-w-[240px]">
@@ -24,45 +20,38 @@ export function Toolbar({ selectedColor, onColorChange }: ToolbarProps) {
         <p className="text-xs text-gray-600">Create and manage shapes</p>
       </div>
 
-      {/* Color Palette */}
+      {/* Mode Buttons */}
       <div className="mb-4">
-        <ColorPalette selectedColor={selectedColor} onColorSelect={handleColorSelect} />
+        <div className="text-xs font-semibold text-gray-700 mb-2">Mode</div>
+        <div className="flex gap-2">
+          <ModeButton
+            icon={<Hand size={24} />}
+            label="Pan Mode"
+            tooltip="Pan Mode - Click and drag to move canvas"
+            shortcut="V"
+            isActive={mode === 'pan'}
+            onClick={() => setMode('pan')}
+          />
+          <ModeButton
+            icon={<Square size={24} />}
+            label="Rectangle Mode"
+            tooltip="Rectangle Mode - Click and drag to create rectangles"
+            shortcut="R"
+            isActive={mode === 'rectangle'}
+            onClick={() => setMode('rectangle')}
+          />
+        </div>
+        <p className="mt-2 text-xs text-gray-600">
+          {mode === 'pan' ? '✋ Pan mode active' : '⬛ Rectangle mode active'}
+        </p>
       </div>
 
-      {/* Create Button */}
+      {/* Divider */}
+      <div className="border-t border-gray-200 my-4" />
+
+      {/* Color Palette */}
       <div className="mb-4">
-        <button
-          onClick={() => setIsCreatingMode(!isCreatingMode)}
-          className={`w-full px-4 py-2.5 rounded-lg font-medium text-sm transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-            isCreatingMode
-              ? 'bg-green-600 text-white hover:bg-green-700 focus:ring-green-500'
-              : 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500'
-          }`}
-          title={isCreatingMode ? 'Creating mode active' : 'Enter creating mode'}
-        >
-          <span className="flex items-center justify-center gap-2">
-            {/* Create icon */}
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-            >
-              <path
-                fillRule="evenodd"
-                d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"
-                clipRule="evenodd"
-              />
-            </svg>
-            {isCreatingMode ? 'Creating Mode' : 'Create Rectangle'}
-          </span>
-        </button>
-        
-        {isCreatingMode && (
-          <p className="mt-2 text-xs text-green-700 font-medium animate-pulse">
-            ✓ Click and drag on canvas to create
-          </p>
-        )}
+        <ColorPalette selectedColor={selectedColor} onColorSelect={onColorChange} />
       </div>
 
       {/* Current Color Display */}
@@ -93,6 +82,14 @@ export function Toolbar({ selectedColor, onColorChange }: ToolbarProps) {
           Keyboard Shortcuts
         </p>
         <div className="space-y-1 text-xs text-gray-600">
+          <div className="flex justify-between">
+            <span>V</span>
+            <span className="font-mono text-gray-500">Pan mode</span>
+          </div>
+          <div className="flex justify-between">
+            <span>R</span>
+            <span className="font-mono text-gray-500">Rectangle mode</span>
+          </div>
           <div className="flex justify-between">
             <span>Delete/Backspace</span>
             <span className="font-mono text-gray-500">Delete shape</span>

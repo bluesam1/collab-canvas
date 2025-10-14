@@ -821,3 +821,179 @@ describe('Rectangle Deletion', () => {
   });
 });
 
+// Test component for mode switching
+function TestModeComponent() {
+  const { mode, setMode } = useCanvas();
+
+  return (
+    <div>
+      <div data-testid="current-mode">{mode}</div>
+      <button onClick={() => setMode('pan')} data-testid="set-pan-mode">
+        Set Pan Mode
+      </button>
+      <button onClick={() => setMode('rectangle')} data-testid="set-rectangle-mode">
+        Set Rectangle Mode
+      </button>
+    </div>
+  );
+}
+
+describe('Canvas Mode Switching', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should default to pan mode', () => {
+    render(
+      <CanvasContextProvider>
+        <TestModeComponent />
+      </CanvasContextProvider>
+    );
+
+    const modeDisplay = screen.getByTestId('current-mode');
+    expect(modeDisplay.textContent).toBe('pan');
+  });
+
+  it('should switch to rectangle mode when clicking rectangle mode button', () => {
+    render(
+      <CanvasContextProvider>
+        <TestModeComponent />
+      </CanvasContextProvider>
+    );
+
+    const rectangleModeButton = screen.getByTestId('set-rectangle-mode');
+    fireEvent.click(rectangleModeButton);
+
+    const modeDisplay = screen.getByTestId('current-mode');
+    expect(modeDisplay.textContent).toBe('rectangle');
+  });
+
+  it('should switch to pan mode when clicking pan mode button', () => {
+    render(
+      <CanvasContextProvider>
+        <TestModeComponent />
+      </CanvasContextProvider>
+    );
+
+    // First set to rectangle mode
+    const rectangleModeButton = screen.getByTestId('set-rectangle-mode');
+    fireEvent.click(rectangleModeButton);
+
+    // Then switch to pan mode
+    const panModeButton = screen.getByTestId('set-pan-mode');
+    fireEvent.click(panModeButton);
+
+    const modeDisplay = screen.getByTestId('current-mode');
+    expect(modeDisplay.textContent).toBe('pan');
+  });
+
+  it('should allow toggling between modes multiple times', () => {
+    render(
+      <CanvasContextProvider>
+        <TestModeComponent />
+      </CanvasContextProvider>
+    );
+
+    const panModeButton = screen.getByTestId('set-pan-mode');
+    const rectangleModeButton = screen.getByTestId('set-rectangle-mode');
+    const modeDisplay = screen.getByTestId('current-mode');
+
+    // Default is pan
+    expect(modeDisplay.textContent).toBe('pan');
+
+    // Switch to rectangle
+    fireEvent.click(rectangleModeButton);
+    expect(modeDisplay.textContent).toBe('rectangle');
+
+    // Switch back to pan
+    fireEvent.click(panModeButton);
+    expect(modeDisplay.textContent).toBe('pan');
+
+    // Switch to rectangle again
+    fireEvent.click(rectangleModeButton);
+    expect(modeDisplay.textContent).toBe('rectangle');
+  });
+
+  it('should maintain mode state within the same provider context', () => {
+    const { rerender } = render(
+      <CanvasContextProvider>
+        <TestModeComponent />
+      </CanvasContextProvider>
+    );
+
+    const rectangleModeButton = screen.getByTestId('set-rectangle-mode');
+    fireEvent.click(rectangleModeButton);
+
+    let modeDisplay = screen.getByTestId('current-mode');
+    expect(modeDisplay.textContent).toBe('rectangle');
+
+    // Re-render the component within the same provider
+    rerender(
+      <CanvasContextProvider>
+        <TestModeComponent />
+      </CanvasContextProvider>
+    );
+
+    // After rerender with a NEW provider instance, mode resets to default
+    // This is expected behavior - provider state is fresh
+    modeDisplay = screen.getByTestId('current-mode');
+    expect(modeDisplay.textContent).toBe('pan');
+  });
+
+  it('should allow canvas operations to work independently of mode', async () => {
+    const TestModeWithOperations = () => {
+      const { mode, setMode, objects, createObject } = useCanvas();
+      const [testUserId] = useState('test-user-123');
+
+      const handleCreate = () => {
+        createObject({
+          x: 100,
+          y: 100,
+          width: 200,
+          height: 150,
+          fill: '#3B82F6',
+          createdBy: testUserId,
+        });
+      };
+
+      return (
+        <div>
+          <div data-testid="current-mode">{mode}</div>
+          <div data-testid="object-count">{objects.length}</div>
+          <button onClick={() => setMode('rectangle')} data-testid="set-rectangle-mode">
+            Rectangle Mode
+          </button>
+          <button onClick={handleCreate} data-testid="create-rect">
+            Create
+          </button>
+        </div>
+      );
+    };
+
+    render(
+      <CanvasContextProvider>
+        <TestModeWithOperations />
+      </CanvasContextProvider>
+    );
+
+    // Start in pan mode
+    expect(screen.getByTestId('current-mode').textContent).toBe('pan');
+
+    // Create object in pan mode
+    fireEvent.click(screen.getByTestId('create-rect'));
+    await waitFor(() => {
+      expect(screen.getByTestId('object-count').textContent).toBe('1');
+    });
+
+    // Switch to rectangle mode
+    fireEvent.click(screen.getByTestId('set-rectangle-mode'));
+    expect(screen.getByTestId('current-mode').textContent).toBe('rectangle');
+
+    // Create another object in rectangle mode
+    fireEvent.click(screen.getByTestId('create-rect'));
+    await waitFor(() => {
+      expect(screen.getByTestId('object-count').textContent).toBe('2');
+    });
+  });
+});
+

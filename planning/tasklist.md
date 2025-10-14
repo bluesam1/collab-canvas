@@ -2,7 +2,7 @@
 
 **Project:** CollabCanvas MVP  
 **Deadline:** Tuesday Evening (24 hours)  
-**Total PRs:** 13
+**Total PRs:** 13 (+ PR 13.1 enhancement)
 
 ---
 
@@ -41,6 +41,7 @@ collabcanvas/
 │   │   │   └── Cursor.tsx            # Remote cursor component
 │   │   ├── toolbar/
 │   │   │   ├── Toolbar.tsx           # Main toolbar
+│   │   │   ├── ModeButton.tsx        # Mode button component (PR 13.1)
 │   │   │   ├── ColorPalette.tsx      # Color picker
 │   │   │   └── DeleteButton.tsx      # Delete button
 │   │   └── presence/
@@ -942,6 +943,115 @@ collabcanvas/
 
 ---
 
+## PR #13.1: Canvas Mode Switching (Pan Mode vs Rectangle Mode)
+
+**Branch Name:** `pr-13.1-canvas-modes`  
+**Goal:** Add mode switching between Pan Mode and Rectangle Mode with icon buttons and tooltips
+
+### Tasks:
+- [ ] **Task 13.1.1:** Update types for canvas modes
+  - **Files Modified:**
+    - `src/types/index.ts`
+  - **Implementation:**
+    - Add `CanvasMode` type: `'pan' | 'rectangle'`
+    - Add mode to CanvasContext type definition
+
+- [ ] **Task 13.1.2:** Add mode state to CanvasContext
+  - **Files Modified:**
+    - `src/contexts/CanvasContext.tsx`
+  - **Implementation:**
+    - Add `mode` state (default: `'pan'`)
+    - Add `setMode` function
+    - Export mode and setMode in context
+
+- [ ] **Task 13.1.3:** Create ModeButton component
+  - **Files Created:**
+    - `src/components/toolbar/ModeButton.tsx`
+  - **Implementation:**
+    - Icon button component with tooltip
+    - Props: icon, label, isActive, onClick
+    - Active state styling (highlighted when selected)
+    - Hover tooltip that describes the mode
+    - Use Tailwind for styling
+
+- [ ] **Task 13.1.4:** Update Toolbar with mode buttons
+  - **Files Modified:**
+    - `src/components/toolbar/Toolbar.tsx`
+  - **Implementation:**
+    - Add two ModeButton components:
+      - **Pan Mode**: Hand/move icon, tooltip: "Pan Mode - Click and drag to move canvas"
+      - **Rectangle Mode**: Square icon, tooltip: "Rectangle Mode - Click and drag to create rectangles"
+    - Position mode buttons at top of toolbar
+    - Wire up to CanvasContext mode state
+    - Visual separation from color palette and delete button
+
+- [ ] **Task 13.1.5:** Update Canvas component with mode logic
+  - **Files Modified:**
+    - `src/components/canvas/Canvas.tsx`
+  - **Implementation:**
+    - Read mode from CanvasContext
+    - **Pan Mode behavior:**
+      - Click and drag moves the canvas (existing pan behavior)
+      - Cursor changes to grab/grabbing cursor
+      - Cannot create rectangles
+    - **Rectangle Mode behavior:**
+      - Click and drag creates rectangles (existing creation behavior)
+      - Cursor changes to crosshair
+      - Cannot pan canvas by dragging
+    - Default mode: Pan Mode
+    - Preserve other interactions (selection, movement, deletion work in both modes)
+
+- [ ] **Task 13.1.6:** Add visual cursor feedback
+  - **Files Modified:**
+    - `src/components/canvas/Canvas.tsx`
+    - `src/index.css` (for cursor styles)
+  - **Implementation:**
+    - Pan Mode: `cursor: grab` when hovering, `cursor: grabbing` when dragging
+    - Rectangle Mode: `cursor: crosshair` when hovering canvas
+    - Normal cursor for shapes (for selection/movement)
+
+- [ ] **Task 13.1.7:** Add keyboard shortcuts for mode switching
+  - **Files Modified:**
+    - `src/components/canvas/Canvas.tsx` or `src/App.tsx`
+  - **Implementation:**
+    - Press `V` key to switch to Pan Mode
+    - Press `R` key to switch to Rectangle Mode
+    - Show keyboard shortcuts in tooltips
+    - Prevent mode switching when typing in input fields
+
+- [ ] **Task 13.1.8:** Add icons for mode buttons
+  - **Implementation:**
+    - Install icon library if needed (e.g., lucide-react, react-icons)
+    - Or use SVG icons directly
+    - **Pan Mode icon**: Hand or move icon
+    - **Rectangle Mode icon**: Square or rectangle icon
+
+**Testing:** ✅ REQUIRED
+- [ ] **Task 13.1.9:** Create mode switching tests
+  - **Files Modified:**
+    - `tests/canvas.test.tsx`
+  - **Test Cases:**
+    - Default mode is Pan Mode
+    - Clicking Pan Mode button activates Pan Mode
+    - Clicking Rectangle Mode button activates Rectangle Mode
+    - In Pan Mode, dragging moves canvas (not create rectangle)
+    - In Rectangle Mode, dragging creates rectangle (not pan)
+    - Keyboard shortcuts work (V for pan, R for rectangle)
+    - Mode buttons show correct active state
+    - Selection and movement work in both modes
+    - Tooltips display correct information
+
+**Verification:**
+- Run `npm test` - all mode tests pass
+- Manual: Click Pan Mode button, verify can pan but not create rectangles
+- Manual: Click Rectangle Mode button, verify can create rectangles but not pan
+- Manual: Verify keyboard shortcuts work (V and R keys)
+- Manual: Verify tooltips appear on hover
+- Manual: Verify cursor changes based on mode
+- Manual: Verify active button has visual highlight
+
+---
+
 ## Testing Strategy Summary
 
 ### PRs with Tests:
@@ -960,6 +1070,9 @@ collabcanvas/
 - PR #6 (Toolbar) - UI only, tested manually
 - PR #10 (Cursors) - Real-time visual feature, tested manually
 - PR #13 (Deployment) - Deployment only
+
+### Additional PRs with Tests:
+- **PR #13.1 (Canvas Modes):** Unit tests for mode switching and behavior
 
 ### Test Commands:
 ```bash
