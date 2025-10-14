@@ -35,7 +35,7 @@ export function Canvas({ selectedColor }: CanvasProps) {
   const [newRectEnd, setNewRectEnd] = useState<{ x: number; y: number } | null>(null);
 
   // Canvas context and user context
-  const { objects, selectedIds, createObject, updateObject, selectObject } = useCanvas();
+  const { objects, selectedIds, createObject, updateObject, selectObject, deleteObject } = useCanvas();
   const authContext = useContext(UserContext);
 
   // Handle window resize
@@ -56,12 +56,16 @@ export function Canvas({ selectedColor }: CanvasProps) {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         selectObject(null);
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.length > 0) {
+        // Delete the selected rectangle
+        e.preventDefault(); // Prevent browser back navigation on Backspace
+        deleteObject(selectedIds[0]);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectObject]);
+  }, [selectObject, deleteObject, selectedIds]);
 
   // Handle mouse down for panning or rectangle creation
   const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
@@ -366,7 +370,7 @@ export function Canvas({ selectedColor }: CanvasProps) {
             </div>
           )}
           <div className="text-xs text-gray-600 mt-1">
-            Click & drag to create • Click to select • Esc to deselect
+            Click & drag to create • Click to select • Drag to move • Del to delete
           </div>
         </div>
       </div>
