@@ -195,7 +195,7 @@ collabcanvas/
 **Goal:** Implement passwordless email link and Google Sign-In authentication
 
 ### Tasks:
-- [ ] **Task 3.1:** Create TypeScript types for auth
+- [x] **Task 3.1:** Create TypeScript types for auth
   - **Files Created:**
     - `src/types/index.ts`
   - **Implementation:**
@@ -203,7 +203,7 @@ collabcanvas/
     - Define `AuthState` interface
     - Define `AuthContextType` interface
 
-- [ ] **Task 3.2:** Create useAuth custom hook
+- [x] **Task 3.2:** Create useAuth custom hook
   - **Files Created:**
     - `src/hooks/useAuth.ts`
   - **Implementation:**
@@ -213,7 +213,7 @@ collabcanvas/
     - Store email in localStorage for email link flow
     - Export `login`, `logout`, `currentUser`, `isAuthenticated`
 
-- [ ] **Task 3.3:** Create UserContext
+- [x] **Task 3.3:** Create UserContext
   - **Files Created:**
     - `src/contexts/UserContext.tsx`
   - **Implementation:**
@@ -222,7 +222,7 @@ collabcanvas/
     - Add user color assignment (random from 5-color palette)
     - Handle auth persistence
 
-- [ ] **Task 3.4:** Create Login component
+- [x] **Task 3.4:** Create Login component
   - **Files Created:**
     - `src/components/auth/Login.tsx`
   - **Implementation:**
@@ -233,7 +233,7 @@ collabcanvas/
     - Loading states
     - Error handling
 
-- [ ] **Task 3.5:** Create AuthProvider wrapper
+- [x] **Task 3.5:** Create AuthProvider wrapper
   - **Files Created:**
     - `src/components/auth/AuthProvider.tsx`
   - **Implementation:**
@@ -241,7 +241,7 @@ collabcanvas/
     - Show login page if not authenticated
     - Show canvas if authenticated
 
-- [ ] **Task 3.6:** Update App.tsx with auth
+- [x] **Task 3.6:** Update App.tsx with auth
   - **Files Modified:**
     - `src/App.tsx`
   - **Implementation:**
@@ -249,7 +249,7 @@ collabcanvas/
     - Add AuthProvider
 
 **Testing:** ✅ REQUIRED
-- [ ] **Task 3.7:** Create auth integration tests
+- [x] **Task 3.7:** Create auth integration tests
   - **Files Created:**
     - `tests/setup.ts` (Vitest configuration)
     - `tests/auth.test.tsx`
