@@ -174,7 +174,7 @@ export const subscribeToPresence = (callback: (presence: Record<string, unknown>
 };
 
 // Cursor operations (with throttling handled by caller)
-export const updateCursor = async (userId: string, cursorData: { x: number; y: number; email: string }) => {
+export const updateCursor = async (userId: string, cursorData: { x: number; y: number; email: string; color?: string }) => {
   const cursorRef = ref(database, `presence/${userId}/cursor`);
   
   try {
