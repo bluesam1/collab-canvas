@@ -1,6 +1,15 @@
-import { createContext, useState } from 'react';
+import { createContext, useState, useEffect, useContext } from 'react';
 import type { ReactNode } from 'react';
 import type { Rectangle, CanvasContextType } from '../types';
+import { UserContext } from './UserContext';
+import { 
+  subscribeToObjects, 
+  createObject as createFirebaseObject,
+  updateObject as updateFirebaseObject,
+  deleteObject as deleteFirebaseObject
+} from '../utils/firebase';
+import { ref, push } from 'firebase/database';
+import { database } from '../config/firebase';
 
 // Create the context
 export const CanvasContext = createContext<CanvasContextType | undefined>(undefined);
@@ -12,41 +21,122 @@ interface CanvasContextProviderProps {
 export const CanvasContextProvider = ({ children }: CanvasContextProviderProps) => {
   const [objects, setObjects] = useState<Rectangle[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const isLoading = false; // Will be implemented in PR #9
+  const [isLoading, setIsLoading] = useState(true);
+  const authContext = useContext(UserContext);
 
-  // Create a new object (local state only - Firebase integration in PR #9)
-  const createObject = (objectData: Omit<Rectangle, 'id' | 'createdAt' | 'updatedAt'>) => {
+  // Set up Firebase listener for real-time sync
+  useEffect(() => {
+    setIsLoading(true);
+
+    // Subscribe to objects in Firebase
+    const unsubscribe = subscribeToObjects((data: Record<string, unknown>) => {
+      // Convert Firebase object format to array
+      const objectsArray: Rectangle[] = Object.entries(data).map(([id, obj]) => {
+        const objectData = obj as Record<string, unknown>;
+        return {
+          id,
+          x: objectData.x as number,
+          y: objectData.y as number,
+          width: objectData.width as number,
+          height: objectData.height as number,
+          fill: objectData.fill as string,
+          createdBy: objectData.createdBy as string,
+          createdAt: objectData.createdAt as number,
+          updatedAt: objectData.updatedAt as number,
+        };
+      });
+
+      setObjects(objectsArray);
+      setIsLoading(false);
+    });
+
+    // Cleanup listener on unmount
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  // Create a new object with Firebase integration
+  const createObject = async (objectData: Omit<Rectangle, 'id' | 'createdAt' | 'updatedAt'>) => {
+    // Generate a unique ID using Firebase push
+    const objectsRef = ref(database, 'objects');
+    const newObjectRef = push(objectsRef);
+    const objectId = newObjectRef.key;
+
+    if (!objectId) {
+      console.error('Failed to generate object ID');
+      return;
+    }
+
     const now = Date.now();
     const newObject: Rectangle = {
       ...objectData,
-      id: `rect-${now}-${Math.random().toString(36).substr(2, 9)}`,
+      id: objectId,
       createdAt: now,
       updatedAt: now,
     };
 
+    // Optimistic update: add to local state immediately
     setObjects((prev) => [...prev, newObject]);
+
+    // Write to Firebase
+    try {
+      await createFirebaseObject({
+        ...objectData,
+        id: objectId,
+        createdAt: now,
+        updatedAt: now,
+      });
+    } catch (error) {
+      console.error('Error creating object in Firebase:', error);
+      // Rollback optimistic update on error
+      setObjects((prev) => prev.filter((obj) => obj.id !== objectId));
+    }
   };
 
-  // Update an existing object (local state only)
-  const updateObject = (id: string, updates: Partial<Rectangle>) => {
+  // Update an existing object with Firebase integration
+  const updateObject = async (id: string, updates: Partial<Rectangle>) => {
+    const now = Date.now();
+    
+    // Optimistic update: update local state immediately
     setObjects((prev) =>
       prev.map((obj) =>
         obj.id === id
-          ? { ...obj, ...updates, updatedAt: Date.now() }
+          ? { ...obj, ...updates, updatedAt: now }
           : obj
       )
     );
+
+    // Write to Firebase
+    try {
+      await updateFirebaseObject(id, {
+        ...updates,
+        updatedAt: now,
+      });
+    } catch (error) {
+      console.error('Error updating object in Firebase:', error);
+      // Note: Firebase listener will revert to correct state
+    }
   };
 
-  // Delete an object (local state only)
-  const deleteObject = (id: string) => {
+  // Delete an object with Firebase integration
+  const deleteObject = async (id: string) => {
+    // Optimistic update: remove from local state immediately
     setObjects((prev) => prev.filter((obj) => obj.id !== id));
     
     // Clear selection if the deleted object was selected
     setSelectedIds((prev) => prev.filter((selectedId) => selectedId !== id));
+
+    // Remove from Firebase
+    try {
+      await deleteFirebaseObject(id);
+    } catch (error) {
+      console.error('Error deleting object from Firebase:', error);
+      // Note: Firebase listener will restore correct state
+    }
   };
 
-  // Select an object (single selection only)
+  // Select an object (single selection only - no Firebase sync needed)
   const selectObject = (id: string | null) => {
     if (id === null) {
       setSelectedIds([]);
