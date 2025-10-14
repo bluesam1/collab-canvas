@@ -1,7 +1,6 @@
-import { createContext, useState, useEffect, useContext } from 'react';
+import { createContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import type { Rectangle, CanvasContextType } from '../types';
-import { UserContext } from './UserContext';
 import { 
   subscribeToObjects, 
   createObject as createFirebaseObject,
@@ -22,7 +21,6 @@ export const CanvasContextProvider = ({ children }: CanvasContextProviderProps) 
   const [objects, setObjects] = useState<Rectangle[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const authContext = useContext(UserContext);
 
   // Set up Firebase listener for real-time sync
   useEffect(() => {
