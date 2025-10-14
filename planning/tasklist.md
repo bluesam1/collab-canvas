@@ -333,7 +333,7 @@ collabcanvas/
 **Goal:** Implement Konva canvas with pan and zoom functionality
 
 ### Tasks:
-- [ ] **Task 5.1:** Create Canvas component skeleton
+- [x] **Task 5.1:** Create Canvas component skeleton
   - **Files Created:**
     - `src/components/canvas/Canvas.tsx`
   - **Implementation:**
@@ -341,7 +341,7 @@ collabcanvas/
     - Set up 5000x5000px workspace
     - Basic stage rendering
 
-- [ ] **Task 5.2:** Implement pan functionality (programmatic)
+- [x] **Task 5.2:** Implement pan functionality (programmatic)
   - **Files Modified:**
     - `src/components/canvas/Canvas.tsx`
   - **Implementation:**
@@ -350,7 +350,7 @@ collabcanvas/
     - Handle mouse drag events programmatically
     - Add smooth transition animations
 
-- [ ] **Task 5.3:** Implement zoom functionality (programmatic)
+- [x] **Task 5.3:** Implement zoom functionality (programmatic)
   - **Files Modified:**
     - `src/components/canvas/Canvas.tsx`
   - **Implementation:**
@@ -361,14 +361,14 @@ collabcanvas/
     - Handle pinch gestures (if possible)
     - Add smooth zoom animations
 
-- [ ] **Task 5.4:** Add grid/background
+- [x] **Task 5.4:** Add grid/background
   - **Files Modified:**
     - `src/components/canvas/Canvas.tsx`
   - **Implementation:**
     - Draw grid lines or subtle background
     - Make grid move with pan/zoom
 
-- [ ] **Task 5.5:** Add canvas to App
+- [x] **Task 5.5:** Add canvas to App
   - **Files Modified:**
     - `src/App.tsx`
   - **Implementation:**
