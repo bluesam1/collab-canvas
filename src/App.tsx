@@ -4,6 +4,7 @@ import { CanvasContextProvider } from './contexts/CanvasContext';
 import { PresenceContextProvider } from './contexts/PresenceContext';
 import { AuthProvider } from './components/auth/AuthProvider';
 import { Canvas } from './components/canvas/Canvas';
+import { Toolbar } from './components/toolbar/Toolbar';
 import './App.css';
 
 // Main authenticated app content
@@ -40,6 +41,9 @@ function AuthenticatedApp() {
           </button>
         </div>
       </header>
+
+      {/* Toolbar - positioned in top-left */}
+      <Toolbar />
 
       {/* Canvas - full screen */}
       <Canvas />
