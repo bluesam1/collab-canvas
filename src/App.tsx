@@ -1,4 +1,4 @@
-import { useContext } from 'react';
+import { useContext, useState } from 'react';
 import { UserContextProvider, UserContext } from './contexts/UserContext';
 import { CanvasContextProvider } from './contexts/CanvasContext';
 import { PresenceContextProvider } from './contexts/PresenceContext';
@@ -10,6 +10,7 @@ import './App.css';
 // Main authenticated app content
 function AuthenticatedApp() {
   const authContext = useContext(UserContext);
+  const [selectedColor, setSelectedColor] = useState('#3B82F6'); // Default blue
 
   if (!authContext || !authContext.user) {
     return null;
@@ -43,10 +44,10 @@ function AuthenticatedApp() {
       </header>
 
       {/* Toolbar - positioned in top-left */}
-      <Toolbar />
+      <Toolbar selectedColor={selectedColor} onColorChange={setSelectedColor} />
 
       {/* Canvas - full screen */}
-      <Canvas />
+      <Canvas selectedColor={selectedColor} />
     </div>
   );
 }

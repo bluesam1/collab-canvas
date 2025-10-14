@@ -1,14 +1,17 @@
 import { useState } from 'react';
 import { ColorPalette } from './ColorPalette';
 import { DeleteButton } from './DeleteButton';
-import { USER_COLORS } from '../../utils/colors';
 
-export function Toolbar() {
-  const [selectedColor, setSelectedColor] = useState<string>(USER_COLORS[0]);
+interface ToolbarProps {
+  selectedColor: string;
+  onColorChange: (color: string) => void;
+}
+
+export function Toolbar({ selectedColor, onColorChange }: ToolbarProps) {
   const [isCreatingMode, setIsCreatingMode] = useState(false);
 
   const handleColorSelect = (color: string) => {
-    setSelectedColor(color);
+    onColorChange(color);
     // Automatically enter creating mode when a color is selected
     setIsCreatingMode(true);
   };
@@ -23,7 +26,7 @@ export function Toolbar() {
 
       {/* Color Palette */}
       <div className="mb-4">
-        <ColorPalette onColorSelect={handleColorSelect} />
+        <ColorPalette selectedColor={selectedColor} onColorSelect={handleColorSelect} />
       </div>
 
       {/* Create Button */}
