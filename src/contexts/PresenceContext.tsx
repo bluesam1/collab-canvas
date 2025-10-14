@@ -1,4 +1,5 @@
-import { createContext, useState, ReactNode, useContext } from 'react';
+import { createContext, useState, useContext } from 'react';
+import type { ReactNode } from 'react';
 import { UserContext } from './UserContext';
 import type { PresenceUser, CursorPosition, PresenceContextType } from '../types';
 
@@ -11,7 +12,7 @@ interface PresenceContextProviderProps {
 
 export const PresenceContextProvider = ({ children }: PresenceContextProviderProps) => {
   const authContext = useContext(UserContext);
-  const [onlineUsers, setOnlineUsers] = useState<Map<string, PresenceUser>>(new Map());
+  const onlineUsers = new Map<string, PresenceUser>(); // Will be implemented in PR #11
   const [cursors, setCursors] = useState<Map<string, CursorPosition>>(new Map());
 
   // Update cursor position (local state only - Firebase integration in PR #10)
