@@ -390,7 +390,7 @@ collabcanvas/
 **Goal:** Create toolbar with Create button, color palette, and Delete button
 
 ### Tasks:
-- [ ] **Task 6.1:** Create main Toolbar component
+- [x] **Task 6.1:** Create main Toolbar component
   - **Files Created:**
     - `src/components/toolbar/Toolbar.tsx`
   - **Implementation:**
@@ -398,7 +398,7 @@ collabcanvas/
     - Container styling with Tailwind
     - Layout for buttons and palette
 
-- [ ] **Task 6.2:** Create ColorPalette component
+- [x] **Task 6.2:** Create ColorPalette component
   - **Files Created:**
     - `src/components/toolbar/ColorPalette.tsx`
   - **Implementation:**
@@ -407,7 +407,7 @@ collabcanvas/
     - Visual feedback for selected color
     - Click to select color
 
-- [ ] **Task 6.3:** Create DeleteButton component
+- [x] **Task 6.3:** Create DeleteButton component
   - **Files Created:**
     - `src/components/toolbar/DeleteButton.tsx`
   - **Implementation:**
@@ -415,14 +415,14 @@ collabcanvas/
     - Disabled state when nothing selected
     - Click handler (calls context function)
 
-- [ ] **Task 6.4:** Add toolbar to Canvas/App
+- [x] **Task 6.4:** Add toolbar to Canvas/App
   - **Files Modified:**
     - `src/App.tsx` or `src/components/canvas/Canvas.tsx`
   - **Implementation:**
     - Render Toolbar component
     - Position absolutely in top-left
 
-- [ ] **Task 6.5:** Add global styles
+- [x] **Task 6.5:** Add global styles
   - **Files Modified:**
     - `src/styles/index.css`
   - **Implementation:**
