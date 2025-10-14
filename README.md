@@ -8,7 +8,7 @@
 
 A real-time collaborative canvas application where multiple users can create, move, and interact with shapes together. Built with React, TypeScript, Firebase, and Konva.
 
-> **🚀 Live Demo**: Coming soon after deployment (see Deployment section below)
+> **🚀 Live Demo**: [https://collab-canvas-2ba2e.web.app/](https://collab-canvas-2ba2e.web.app/)
 
 ## ✨ Features
 
