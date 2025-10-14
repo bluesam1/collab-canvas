@@ -51,6 +51,7 @@ export interface CursorPosition {
   x: number;
   y: number;
   email: string;
+  color: string;
   timestamp: number;
 }
 
