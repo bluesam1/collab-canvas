@@ -5,6 +5,7 @@ import { PresenceContextProvider } from './contexts/PresenceContext';
 import { AuthProvider } from './components/auth/AuthProvider';
 import { Canvas } from './components/canvas/Canvas';
 import { Toolbar } from './components/toolbar/Toolbar';
+import { OnlineUsers } from './components/presence/OnlineUsers';
 import './App.css';
 
 // Main authenticated app content
@@ -45,6 +46,9 @@ function AuthenticatedApp() {
 
       {/* Toolbar - positioned in top-left */}
       <Toolbar selectedColor={selectedColor} onColorChange={setSelectedColor} />
+
+      {/* Online Users - positioned in top-right */}
+      <OnlineUsers />
 
       {/* Canvas - full screen */}
       <Canvas selectedColor={selectedColor} />
