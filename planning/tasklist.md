@@ -444,7 +444,7 @@ collabcanvas/
 **Goal:** Implement click-and-drag rectangle creation and selection
 
 ### Tasks:
-- [ ] **Task 7.1:** Create Rectangle component
+- [x] **Task 7.1:** Create Rectangle component
   - **Files Created:**
     - `src/components/canvas/Rectangle.tsx`
   - **Implementation:**
@@ -453,7 +453,7 @@ collabcanvas/
     - Render rectangle with fill color
     - Selection border when selected
 
-- [ ] **Task 7.2:** Implement rectangle creation in Canvas
+- [x] **Task 7.2:** Implement rectangle creation in Canvas
   - **Files Modified:**
     - `src/components/canvas/Canvas.tsx`
   - **Implementation:**
@@ -465,7 +465,7 @@ collabcanvas/
     - Use selected color from ColorPalette
     - Rectangles can extend beyond canvas boundaries
 
-- [ ] **Task 7.3:** Implement rectangle selection
+- [x] **Task 7.3:** Implement rectangle selection
   - **Files Modified:**
     - `src/components/canvas/Canvas.tsx`
     - `src/components/canvas/Rectangle.tsx`
@@ -475,7 +475,7 @@ collabcanvas/
     - Visual feedback (border around selected)
     - Single selection only
 
-- [ ] **Task 7.4:** Implement deselection
+- [x] **Task 7.4:** Implement deselection
   - **Files Modified:**
     - `src/components/canvas/Canvas.tsx`
   - **Implementation:**
@@ -483,7 +483,7 @@ collabcanvas/
     - Escape key to deselect
     - Update CanvasContext
 
-- [ ] **Task 7.5:** Render rectangles from context
+- [x] **Task 7.5:** Render rectangles from context
   - **Files Modified:**
     - `src/components/canvas/Canvas.tsx`
   - **Implementation:**
@@ -492,7 +492,7 @@ collabcanvas/
     - Pass selection state
 
 **Testing:** ✅ REQUIRED
-- [ ] **Task 7.6:** Create canvas operations tests
+- [x] **Task 7.6:** Create canvas operations tests
   - **Files Created:**
     - `tests/canvas.test.tsx`
   - **Test Cases:**
