@@ -68,3 +68,21 @@ export interface PresenceState {
   cursors: Map<string, CursorPosition>;
 }
 
+// Canvas context type
+export interface CanvasContextType {
+  objects: Rectangle[];
+  selectedIds: string[];
+  isLoading: boolean;
+  createObject: (object: Omit<Rectangle, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  updateObject: (id: string, updates: Partial<Rectangle>) => void;
+  deleteObject: (id: string) => void;
+  selectObject: (id: string | null) => void;
+}
+
+// Presence context type
+export interface PresenceContextType {
+  onlineUsers: Map<string, PresenceUser>;
+  cursors: Map<string, CursorPosition>;
+  updateCursor: (position: { x: number; y: number }) => void;
+}
+
