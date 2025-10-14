@@ -2,7 +2,9 @@ import { useRef, useState, useEffect, useContext } from 'react';
 import { Stage, Layer, Line, Rect } from 'react-konva';
 import Konva from 'konva';
 import { Rectangle } from './Rectangle';
+import { Cursor } from './Cursor';
 import { useCanvas } from '../../hooks/useCanvas';
+import { usePresence } from '../../hooks/usePresence';
 import { UserContext } from '../../contexts/UserContext';
 
 // Canvas configuration
@@ -36,6 +38,7 @@ export function Canvas({ selectedColor }: CanvasProps) {
 
   // Canvas context and user context
   const { objects, selectedIds, isLoading, createObject, updateObject, selectObject, deleteObject } = useCanvas();
+  const { cursors, updateCursor } = usePresence();
   const authContext = useContext(UserContext);
 
   // Handle window resize
@@ -110,6 +113,21 @@ export function Canvas({ selectedColor }: CanvasProps) {
 
   // Handle mouse move for panning or rectangle creation
   const handleMouseMove = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    const stage = stageRef.current;
+    
+    // Broadcast cursor position (world coordinates)
+    if (stage) {
+      const pos = stage.getPointerPosition();
+      if (pos) {
+        const worldPos = {
+          x: (pos.x - stage.x()) / stage.scaleX(),
+          y: (pos.y - stage.y()) / stage.scaleY(),
+        };
+        // Update cursor position (throttled in PresenceContext)
+        updateCursor(worldPos);
+      }
+    }
+    
     if (isPanning) {
       const newPos = {
         x: e.evt.clientX - dragStart.x,
@@ -117,7 +135,6 @@ export function Canvas({ selectedColor }: CanvasProps) {
       };
 
       // Animate the position change
-      const stage = stageRef.current;
       if (stage) {
         stage.to({
           x: newPos.x,
@@ -128,7 +145,6 @@ export function Canvas({ selectedColor }: CanvasProps) {
         setStagePos(newPos);
       }
     } else if (isCreating && newRectStart) {
-      const stage = stageRef.current;
       if (stage) {
         const pos = stage.getPointerPosition();
         if (pos) {
@@ -359,6 +375,20 @@ export function Canvas({ selectedColor }: CanvasProps) {
               listening={false}
             />
           )}
+        </Layer>
+
+        {/* Cursors layer */}
+        <Layer listening={false}>
+          {/* Render remote cursors */}
+          {Array.from(cursors.entries()).map(([userId, cursor]) => (
+            <Cursor
+              key={userId}
+              x={cursor.x}
+              y={cursor.y}
+              email={cursor.email}
+              color={cursor.color}
+            />
+          ))}
         </Layer>
       </Stage>
 
