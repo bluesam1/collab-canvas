@@ -1,5 +1,7 @@
 import { useContext } from 'react';
 import { UserContextProvider, UserContext } from './contexts/UserContext';
+import { CanvasContextProvider } from './contexts/CanvasContext';
+import { PresenceContextProvider } from './contexts/PresenceContext';
 import { AuthProvider } from './components/auth/AuthProvider';
 import './App.css';
 
@@ -65,7 +67,11 @@ function App() {
   return (
     <UserContextProvider>
       <AuthProvider>
-        <AuthenticatedApp />
+        <CanvasContextProvider>
+          <PresenceContextProvider>
+            <AuthenticatedApp />
+          </PresenceContextProvider>
+        </CanvasContextProvider>
       </AuthProvider>
     </UserContextProvider>
   );
