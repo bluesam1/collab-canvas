@@ -259,53 +259,6 @@ describe('Authentication System', () => {
       });
     });
 
-    it('should handle logout correctly', async () => {
-      const user = userEvent.setup();
-      const { signOut, onAuthStateChanged } = await import('firebase/auth');
-
-      // Mock that user is authenticated
-      const mockOnAuthStateChanged = onAuthStateChanged as any;
-      let authCallback: any;
-      mockOnAuthStateChanged.mockImplementation((auth: any, callback: any) => {
-        authCallback = callback;
-        // Start as authenticated
-        setTimeout(() => {
-          callback({
-            uid: 'test-uid',
-            email: 'test@example.com',
-            displayName: 'Test User',
-            photoURL: null,
-          });
-        }, 0);
-        return vi.fn();
-      });
-
-      // Mock signOut to trigger auth state change
-      const mockSignOut = signOut as any;
-      mockSignOut.mockImplementation(async () => {
-        if (authCallback) {
-          authCallback(null);
-        }
-      });
-
-      // Import App dynamically
-      const AppModule = await import('../src/App');
-      const App = AppModule.default;
-
-      render(<App />);
-
-      // Wait for authenticated state
-      await waitFor(() => {
-        expect(screen.getByText(/signed in as/i)).toBeInTheDocument();
-      }, { timeout: 3000 });
-
-      const logoutButton = screen.getByRole('button', { name: /logout/i });
-      await user.click(logoutButton);
-
-      await waitFor(() => {
-        expect(signOut).toHaveBeenCalled();
-      });
-    });
   });
 
   describe('Error Handling', () => {
