@@ -1,4 +1,5 @@
-import { createContext, useState, ReactNode } from 'react';
+import { createContext, useState } from 'react';
+import type { ReactNode } from 'react';
 import type { Rectangle, CanvasContextType } from '../types';
 
 // Create the context
@@ -11,7 +12,7 @@ interface CanvasContextProviderProps {
 export const CanvasContextProvider = ({ children }: CanvasContextProviderProps) => {
   const [objects, setObjects] = useState<Rectangle[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const isLoading = false; // Will be implemented in PR #9
 
   // Create a new object (local state only - Firebase integration in PR #9)
   const createObject = (objectData: Omit<Rectangle, 'id' | 'createdAt' | 'updatedAt'>) => {
