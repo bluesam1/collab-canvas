@@ -35,7 +35,7 @@ export function Canvas({ selectedColor }: CanvasProps) {
   const [newRectEnd, setNewRectEnd] = useState<{ x: number; y: number } | null>(null);
 
   // Canvas context and user context
-  const { objects, selectedIds, createObject, updateObject, selectObject, deleteObject } = useCanvas();
+  const { objects, selectedIds, isLoading, createObject, updateObject, selectObject, deleteObject } = useCanvas();
   const authContext = useContext(UserContext);
 
   // Handle window resize
@@ -296,6 +296,18 @@ export function Canvas({ selectedColor }: CanvasProps) {
   };
 
   const previewRect = getPreviewRect();
+
+  // Show loading indicator while fetching initial data
+  if (isLoading) {
+    return (
+      <div className="relative w-full h-screen overflow-hidden bg-gray-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <div className="text-gray-600 font-medium">Loading canvas...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full h-screen overflow-hidden bg-gray-50">
