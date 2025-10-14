@@ -1,16 +1,12 @@
-import { useState } from 'react';
 import { USER_COLORS } from '../../utils/colors';
 
 interface ColorPaletteProps {
+  selectedColor: string;
   onColorSelect?: (color: string) => void;
 }
 
-export function ColorPalette({ onColorSelect }: ColorPaletteProps) {
-  // Default to first color (blue)
-  const [selectedColor, setSelectedColor] = useState<string>(USER_COLORS[0]);
-
+export function ColorPalette({ selectedColor, onColorSelect }: ColorPaletteProps) {
   const handleColorClick = (color: string) => {
-    setSelectedColor(color);
     onColorSelect?.(color);
   };
 
@@ -39,13 +35,4 @@ export function ColorPalette({ onColorSelect }: ColorPaletteProps) {
   );
 }
 
-// Export a hook to manage color selection state
-export function useColorPalette(initialColor = USER_COLORS[0]) {
-  const [selectedColor, setSelectedColor] = useState(initialColor);
-  
-  return {
-    selectedColor,
-    setSelectedColor,
-  };
-}
 
