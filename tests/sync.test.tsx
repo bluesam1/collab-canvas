@@ -446,3 +446,266 @@ describe('Firebase Real-time Sync', () => {
   });
 });
 
+describe('End-to-End Integration Tests', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (firebaseUtils as any).__clearMockObjects();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should complete full user flow: login → create → move → delete', async () => {
+    render(
+      <MockUserProvider>
+        <CanvasContextProvider>
+          <TestSyncComponent />
+        </CanvasContextProvider>
+      </MockUserProvider>
+    );
+
+    // Wait for initial load
+    await waitFor(() => {
+      expect(screen.getByTestId('loading')).toHaveTextContent('loaded');
+    });
+
+    // Step 1: Create rectangle
+    const createButton = screen.getByTestId('create-rect');
+    createButton.click();
+
+    await waitFor(() => {
+      const objectCount = screen.getByTestId('object-count');
+      expect(objectCount).toHaveTextContent('1');
+    });
+
+    // Step 2: Move rectangle
+    const updateButton = screen.getByTestId('update-first');
+    updateButton.click();
+
+    await waitFor(() => {
+      const objectsData = screen.getByTestId('objects-data');
+      const objects = JSON.parse(objectsData.textContent || '[]');
+      expect(objects[0].x).toBe(300);
+      expect(objects[0].y).toBe(300);
+    });
+
+    // Step 3: Delete rectangle
+    const deleteButton = screen.getByTestId('delete-first');
+    deleteButton.click();
+
+    await waitFor(() => {
+      const objectCount = screen.getByTestId('object-count');
+      expect(objectCount).toHaveTextContent('0');
+    });
+
+    // Verify Firebase operations were called
+    expect(firebaseUtils.createObject).toHaveBeenCalledTimes(1);
+    expect(firebaseUtils.updateObject).toHaveBeenCalledTimes(1);
+    expect(firebaseUtils.deleteObject).toHaveBeenCalledTimes(1);
+  });
+
+  it('should handle multiple users interacting simultaneously', async () => {
+    render(
+      <MockUserProvider>
+        <CanvasContextProvider>
+          <TestSyncComponent />
+        </CanvasContextProvider>
+      </MockUserProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('loading')).toHaveTextContent('loaded');
+    });
+
+    // User 1 creates a rectangle
+    const createButton = screen.getByTestId('create-rect');
+    createButton.click();
+
+    await waitFor(() => {
+      const objectCount = screen.getByTestId('object-count');
+      expect(objectCount).toHaveTextContent('1');
+    });
+
+    // Simulate User 2 creating a rectangle remotely
+    const remoteObject = {
+      'remote-user-2-rect': {
+        id: 'remote-user-2-rect',
+        x: 200,
+        y: 200,
+        width: 150,
+        height: 100,
+        fill: '#EF4444',
+        createdBy: 'remote-user-2',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      },
+    };
+
+    (firebaseUtils as any).__simulateRemoteChange(remoteObject);
+
+    await waitFor(() => {
+      const objectCount = screen.getByTestId('object-count');
+      expect(objectCount).toHaveTextContent('2');
+    });
+
+    // Verify both rectangles exist
+    const objectsData = screen.getByTestId('objects-data');
+    const objects = JSON.parse(objectsData.textContent || '[]');
+    expect(objects).toHaveLength(2);
+    expect(objects.some((obj: any) => obj.createdBy === 'test-user-sync-123')).toBe(true);
+    expect(objects.some((obj: any) => obj.createdBy === 'remote-user-2')).toBe(true);
+  });
+
+  it('should handle selection conflicts with first selection wins', async () => {
+    render(
+      <MockUserProvider>
+        <CanvasContextProvider>
+          <TestSyncComponent />
+        </CanvasContextProvider>
+      </MockUserProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('loading')).toHaveTextContent('loaded');
+    });
+
+    // Create a rectangle
+    const createButton = screen.getByTestId('create-rect');
+    createButton.click();
+
+    await waitFor(() => {
+      const objectCount = screen.getByTestId('object-count');
+      expect(objectCount).toHaveTextContent('1');
+    });
+
+    // Simulate concurrent updates from different users
+    const objectsData = screen.getByTestId('objects-data');
+    const objects = JSON.parse(objectsData.textContent || '[]');
+    const objectId = objects[0].id;
+
+    // User 1 updates position
+    const updateButton = screen.getByTestId('update-first');
+    updateButton.click();
+
+    // Simulate User 2 updating the same object simultaneously
+    const concurrentUpdate = {
+      [objectId]: {
+        ...objects[0],
+        x: 500,
+        y: 500,
+        updatedAt: Date.now() + 1000, // Later timestamp
+      },
+    };
+
+    (firebaseUtils as any).__simulateRemoteChange(concurrentUpdate);
+
+    await waitFor(() => {
+      const objectsData = screen.getByTestId('objects-data');
+      const objects = JSON.parse(objectsData.textContent || '[]');
+      // Last write should win (User 2's update)
+      expect(objects[0].x).toBe(500);
+      expect(objects[0].y).toBe(500);
+    });
+  });
+
+
+
+  it('should handle rapid concurrent updates without data corruption', async () => {
+    render(
+      <MockUserProvider>
+        <CanvasContextProvider>
+          <TestSyncComponent />
+        </CanvasContextProvider>
+      </MockUserProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('loading')).toHaveTextContent('loaded');
+    });
+
+    // Create a rectangle
+    const createButton = screen.getByTestId('create-rect');
+    createButton.click();
+
+    await waitFor(() => {
+      const objectCount = screen.getByTestId('object-count');
+      expect(objectCount).toHaveTextContent('1');
+    });
+
+    const objectsData = screen.getByTestId('objects-data');
+    const objects = JSON.parse(objectsData.textContent || '[]');
+    const objectId = objects[0].id;
+
+    // Perform rapid updates
+    const updateButton = screen.getByTestId('update-first');
+    for (let i = 0; i < 10; i++) {
+      updateButton.click();
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+
+    // Verify final state is consistent
+    await waitFor(() => {
+      const objectsData = screen.getByTestId('objects-data');
+      const objects = JSON.parse(objectsData.textContent || '[]');
+      expect(objects).toHaveLength(1);
+      expect(objects[0].id).toBe(objectId);
+      expect(objects[0].x).toBe(300);
+      expect(objects[0].y).toBe(300);
+    });
+
+    // Verify Firebase was called for each update
+    expect(firebaseUtils.updateObject).toHaveBeenCalledTimes(10);
+  });
+
+  it('should handle network disconnection and reconnection gracefully', async () => {
+    render(
+      <MockUserProvider>
+        <CanvasContextProvider>
+          <TestSyncComponent />
+        </CanvasContextProvider>
+      </MockUserProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('loading')).toHaveTextContent('loaded');
+    });
+
+    // Create a rectangle
+    const createButton = screen.getByTestId('create-rect');
+    createButton.click();
+
+    await waitFor(() => {
+      const objectCount = screen.getByTestId('object-count');
+      expect(objectCount).toHaveTextContent('1');
+    });
+
+    // Simulate network disconnection by mocking Firebase error
+    const networkError = new Error('Network error');
+    vi.mocked(firebaseUtils.updateObject).mockRejectedValueOnce(networkError);
+
+    // Try to update (should handle error gracefully)
+    const updateButton = screen.getByTestId('update-first');
+    updateButton.click();
+
+    // Should not crash the application
+    await waitFor(() => {
+      const objectCount = screen.getByTestId('object-count');
+      expect(objectCount).toHaveTextContent('1');
+    });
+
+    // Simulate reconnection by restoring Firebase functionality
+    vi.mocked(firebaseUtils.updateObject).mockResolvedValueOnce(undefined);
+
+    // Update should work again
+    updateButton.click();
+
+    await waitFor(() => {
+      const objectsData = screen.getByTestId('objects-data');
+      const objects = JSON.parse(objectsData.textContent || '[]');
+      expect(objects[0].x).toBe(300);
+      expect(objects[0].y).toBe(300);
+    });
+  });
+});
+

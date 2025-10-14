@@ -6,6 +6,7 @@ import { AuthProvider } from './components/auth/AuthProvider';
 import { Canvas } from './components/canvas/Canvas';
 import { Toolbar } from './components/toolbar/Toolbar';
 import { OnlineUsers } from './components/presence/OnlineUsers';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import './App.css';
 
 // Main authenticated app content
@@ -59,15 +60,17 @@ function AuthenticatedApp() {
 // Root App component
 function App() {
   return (
-    <UserContextProvider>
-      <AuthProvider>
-        <CanvasContextProvider>
-          <PresenceContextProvider>
-            <AuthenticatedApp />
-          </PresenceContextProvider>
-        </CanvasContextProvider>
-      </AuthProvider>
-    </UserContextProvider>
+    <ErrorBoundary>
+      <UserContextProvider>
+        <AuthProvider>
+          <CanvasContextProvider>
+            <PresenceContextProvider>
+              <AuthenticatedApp />
+            </PresenceContextProvider>
+          </CanvasContextProvider>
+        </AuthProvider>
+      </UserContextProvider>
+    </ErrorBoundary>
   );
 }
 

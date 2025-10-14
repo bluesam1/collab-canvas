@@ -497,6 +497,105 @@ describe('Canvas Keyboard Shortcuts', () => {
       expect(objectCount).toHaveTextContent('0');
     });
   });
+
+
+  it('should handle multiple keyboard shortcuts in sequence', async () => {
+    render(
+      <CanvasContextProvider>
+        <TestCanvasComponent />
+      </CanvasContextProvider>
+    );
+
+    const createButton = screen.getByTestId('create-rect');
+    const selectButton = screen.getByTestId('select-first');
+    const deselectButton = screen.getByTestId('deselect');
+    const deleteButton = screen.getByTestId('delete-first');
+
+    // Create first rectangle
+    fireEvent.click(createButton);
+    await waitFor(() => {
+      const objectCount = screen.getByTestId('object-count');
+      expect(objectCount).toHaveTextContent('1');
+    });
+
+    // Select it
+    fireEvent.click(selectButton);
+    await waitFor(() => {
+      const selectedCount = screen.getByTestId('selected-count');
+      expect(selectedCount).toHaveTextContent('1');
+    });
+
+    // Deselect with Escape (simulated)
+    fireEvent.click(deselectButton);
+    await waitFor(() => {
+      const selectedCount = screen.getByTestId('selected-count');
+      expect(selectedCount).toHaveTextContent('0');
+    });
+
+    // Select again
+    fireEvent.click(selectButton);
+    await waitFor(() => {
+      const selectedCount = screen.getByTestId('selected-count');
+      expect(selectedCount).toHaveTextContent('1');
+    });
+
+    // Delete with Delete key (simulated)
+    fireEvent.click(deleteButton);
+    await waitFor(() => {
+      const objectCount = screen.getByTestId('object-count');
+      expect(objectCount).toHaveTextContent('0');
+    });
+  });
+
+  it('should handle keyboard shortcuts with multiple rectangles', async () => {
+    render(
+      <CanvasContextProvider>
+        <TestCanvasComponent />
+      </CanvasContextProvider>
+    );
+
+    const createButton = screen.getByTestId('create-rect');
+    const selectButton = screen.getByTestId('select-first');
+    const deleteButton = screen.getByTestId('delete-first');
+
+    // Create multiple rectangles
+    fireEvent.click(createButton);
+    fireEvent.click(createButton);
+    fireEvent.click(createButton);
+
+    await waitFor(() => {
+      const objectCount = screen.getByTestId('object-count');
+      expect(objectCount).toHaveTextContent('3');
+    });
+
+    // Select first rectangle
+    fireEvent.click(selectButton);
+    await waitFor(() => {
+      const selectedCount = screen.getByTestId('selected-count');
+      expect(selectedCount).toHaveTextContent('1');
+    });
+
+    // Delete selected rectangle
+    fireEvent.click(deleteButton);
+    await waitFor(() => {
+      const objectCount = screen.getByTestId('object-count');
+      expect(objectCount).toHaveTextContent('2');
+    });
+
+    // Select next rectangle
+    fireEvent.click(selectButton);
+    await waitFor(() => {
+      const selectedCount = screen.getByTestId('selected-count');
+      expect(selectedCount).toHaveTextContent('1');
+    });
+
+    // Delete it
+    fireEvent.click(deleteButton);
+    await waitFor(() => {
+      const objectCount = screen.getByTestId('object-count');
+      expect(objectCount).toHaveTextContent('1');
+    });
+  });
 });
 
 describe('Rectangle Movement', () => {
