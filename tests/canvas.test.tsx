@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import '@testing-library/jest-dom';
 import { CanvasContextProvider } from '../src/contexts/CanvasContext';
 import { useCanvas } from '../src/hooks/useCanvas';
 import { useState } from 'react';

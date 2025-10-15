@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
+import '@testing-library/jest-dom';
 import { PresenceContextProvider } from '../src/contexts/PresenceContext';
 import { UserContext } from '../src/contexts/UserContext';
 import { OnlineUsers } from '../src/components/presence/OnlineUsers';
