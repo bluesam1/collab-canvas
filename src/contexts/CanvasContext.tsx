@@ -15,9 +15,10 @@ export const CanvasContext = createContext<CanvasContextType | undefined>(undefi
 
 interface CanvasContextProviderProps {
   children: ReactNode;
+  canvasId: string;
 }
 
-export const CanvasContextProvider = ({ children }: CanvasContextProviderProps) => {
+export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProviderProps) => {
   const [objects, setObjects] = useState<Rectangle[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -27,8 +28,8 @@ export const CanvasContextProvider = ({ children }: CanvasContextProviderProps) 
   useEffect(() => {
     setIsLoading(true);
 
-    // Subscribe to objects in Firebase
-    const unsubscribe = subscribeToObjects((data: Record<string, unknown>) => {
+    // Subscribe to objects in Firebase for this specific canvas
+    const unsubscribe = subscribeToObjects(canvasId, (data: Record<string, unknown>) => {
       // Convert Firebase object format to array
       const objectsArray: Rectangle[] = Object.entries(data).map(([id, obj]) => {
         const objectData = obj as Record<string, unknown>;
@@ -53,12 +54,12 @@ export const CanvasContextProvider = ({ children }: CanvasContextProviderProps) 
     return () => {
       unsubscribe();
     };
-  }, []);
+  }, [canvasId]);
 
   // Create a new object with Firebase integration
   const createObject = async (objectData: Omit<Rectangle, 'id' | 'createdAt' | 'updatedAt'>) => {
     // Generate a unique ID using Firebase push
-    const objectsRef = ref(database, 'objects');
+    const objectsRef = ref(database, `objects/${canvasId}`);
     const newObjectRef = push(objectsRef);
     const objectId = newObjectRef.key;
 
@@ -80,7 +81,7 @@ export const CanvasContextProvider = ({ children }: CanvasContextProviderProps) 
 
     // Write to Firebase
     try {
-      await createFirebaseObject({
+      await createFirebaseObject(canvasId, {
         ...objectData,
         id: objectId,
         createdAt: now,
@@ -108,7 +109,7 @@ export const CanvasContextProvider = ({ children }: CanvasContextProviderProps) 
 
     // Write to Firebase
     try {
-      await updateFirebaseObject(id, {
+      await updateFirebaseObject(canvasId, id, {
         ...updates,
         updatedAt: now,
       });
@@ -128,7 +129,7 @@ export const CanvasContextProvider = ({ children }: CanvasContextProviderProps) 
 
     // Remove from Firebase
     try {
-      await deleteFirebaseObject(id);
+      await deleteFirebaseObject(canvasId, id);
     } catch (error) {
       console.error('Error deleting object from Firebase:', error);
       // Note: Firebase listener will restore correct state

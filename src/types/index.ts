@@ -30,6 +30,20 @@ export interface AuthContextType {
 // Canvas types
 export type CanvasMode = 'pan' | 'rectangle';
 
+export interface Canvas {
+  id: string;
+  name: string;
+  ownerId: string;
+  createdAt: number;
+  updatedAt: number;
+  lastOpenedBy: Record<string, number>; // userId -> timestamp
+}
+
+export interface CanvasListItem extends Canvas {
+  isOwner: boolean;
+  lastOpenedByMe?: number;
+}
+
 export interface Rectangle {
   id: string;
   x: number;
