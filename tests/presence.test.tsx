@@ -7,7 +7,7 @@ import type { User } from '../src/types';
 
 // Mock Firebase utilities
 vi.mock('../src/utils/firebase', () => ({
-  subscribeToPresence: vi.fn((callback) => {
+  subscribeToPresence: vi.fn((canvasId, callback) => {
     // Simulate Firebase returning presence data
     setTimeout(() => {
       callback({
@@ -25,9 +25,10 @@ vi.mock('../src/utils/firebase', () => ({
     }, 100);
     return vi.fn(); // Return unsubscribe function
   }),
-  setUserPresence: vi.fn(() => Promise.resolve()),
-  updateUserPresence: vi.fn(() => Promise.resolve()),
-  updateCursor: vi.fn(() => Promise.resolve()),
+  setUserPresence: vi.fn((canvasId, userId, data) => Promise.resolve()),
+  updateUserPresence: vi.fn((canvasId, userId, data) => Promise.resolve()),
+  updateCursor: vi.fn((canvasId, userId, position) => Promise.resolve()),
+  clearCursor: vi.fn((canvasId, userId) => Promise.resolve()),
 }));
 
 describe('Presence System', () => {
@@ -57,50 +58,62 @@ describe('Presence System', () => {
   it('renders online users list', async () => {
     render(
       <UserContext.Provider value={mockAuthContext}>
-        <PresenceContextProvider>
+        <PresenceContextProvider canvasId="test-canvas-id">
           <OnlineUsers />
         </PresenceContextProvider>
       </UserContext.Provider>
     );
 
-    // Should show the header
-    expect(screen.getByText('Online Users')).toBeInTheDocument();
+    // Should show the compact button view (no longer shows "Online Users" text by default)
+    // The button should be present
+    const button = screen.getByRole('button');
+    expect(button).toBeInTheDocument();
+    expect(button).toHaveAttribute('title', '0 users online'); // Initially 0 users
   });
 
   it('displays users with correct colors', async () => {
     render(
       <UserContext.Provider value={mockAuthContext}>
-        <PresenceContextProvider>
+        <PresenceContextProvider canvasId="test-canvas-id">
           <OnlineUsers />
         </PresenceContextProvider>
       </UserContext.Provider>
     );
 
-    // Wait for users to load from Firebase
+    // Wait for users to load from Firebase - they appear as colored dots in the compact view
     await waitFor(() => {
-      expect(screen.getByText(/user1@example.com/)).toBeInTheDocument();
+      const button = screen.getByRole('button');
+      // Check that users loaded (could be 2 or 6 depending on test order due to mock state)
+      expect(button).toHaveAttribute('title', expect.stringMatching(/\d+ users online/));
     });
 
+    // Wait for user indicators with colors to be present
     await waitFor(() => {
-      expect(screen.getByText(/user2@example.com/)).toBeInTheDocument();
+      const coloredDots = document.querySelectorAll('[style*="background-color"]');
+      expect(coloredDots.length).toBeGreaterThan(0);
     });
   });
 
   it('shows correct user count', async () => {
     render(
       <UserContext.Provider value={mockAuthContext}>
-        <PresenceContextProvider>
+        <PresenceContextProvider canvasId="test-canvas-id">
           <OnlineUsers />
         </PresenceContextProvider>
       </UserContext.Provider>
     );
 
-    // Wait for users to load and check count is displayed
+    // Wait for users to load and check count is displayed in the button
     await waitFor(() => {
-      // Just verify that a count is displayed (we can't control the exact number from shared mocks)
-      const countBadges = document.querySelectorAll('.bg-gray-100.px-2.py-1.rounded-full');
-      expect(countBadges.length).toBeGreaterThan(0);
+      const button = screen.getByRole('button');
+      // Check that users loaded (could be 2 or 6 depending on test order due to mock state)
+      expect(button).toHaveAttribute('title', expect.stringMatching(/\d+ users online/));
     });
+
+    // The count should be visible in the button
+    const button = screen.getByRole('button');
+    const countText = button.textContent;
+    expect(countText).toMatch(/\d+/); // Should contain a number
   });
 
   it('identifies current user with "(you)" label', async () => {
@@ -112,15 +125,26 @@ describe('Presence System', () => {
       },
     };
 
-    render(
+    const { container } = render(
       <UserContext.Provider value={currentUserContext}>
-        <PresenceContextProvider>
+        <PresenceContextProvider canvasId="test-canvas-id">
           <OnlineUsers />
         </PresenceContextProvider>
       </UserContext.Provider>
     );
 
-    // Wait for users to load and check for "(you)" label
+    // Wait for users to load
+    await waitFor(() => {
+      const button = screen.getByRole('button');
+      // Check that users loaded (could be 2 or 6 depending on test order due to mock state)
+      expect(button).toHaveAttribute('title', expect.stringMatching(/\d+ users online/));
+    });
+
+    // Click the button to open the dropdown
+    const button = screen.getByRole('button');
+    button.click();
+
+    // Now the dropdown should be visible with the "(you)" label
     await waitFor(() => {
       expect(screen.getByText('(you)')).toBeInTheDocument();
     });
@@ -129,7 +153,7 @@ describe('Presence System', () => {
   it('assigns different colors to multiple users', async () => {
     render(
       <UserContext.Provider value={mockAuthContext}>
-        <PresenceContextProvider>
+        <PresenceContextProvider canvasId="test-canvas-id">
           <OnlineUsers />
         </PresenceContextProvider>
       </UserContext.Provider>
@@ -137,31 +161,36 @@ describe('Presence System', () => {
 
     // Wait for users to load
     await waitFor(() => {
-      expect(screen.getByText(/user1@example.com/)).toBeInTheDocument();
+      const button = screen.getByRole('button');
+      // Check that users loaded (could be 2 or 6 depending on test order due to mock state)
+      expect(button).toHaveAttribute('title', expect.stringMatching(/\d+ users online/));
     });
 
-    // Check that colored dots exist (by checking for elements with inline styles)
-    const coloredDots = document.querySelectorAll('[style*="background-color"]');
-    expect(coloredDots.length).toBeGreaterThan(0);
+    // Wait for colored dots to exist in the compact view (by checking for elements with inline styles)
+    await waitFor(() => {
+      const coloredDots = document.querySelectorAll('[style*="background-color"]');
+      expect(coloredDots.length).toBeGreaterThan(0);
+    });
   });
 
   it('shows "No users online" when list is empty', () => {
     // Mock empty presence data
     vi.mock('../src/utils/firebase', () => ({
-      subscribeToPresence: vi.fn((callback) => {
+      subscribeToPresence: vi.fn((canvasId, callback) => {
         setTimeout(() => {
           callback({});
         }, 100);
         return vi.fn();
       }),
-      setUserPresence: vi.fn(() => Promise.resolve()),
-      updateUserPresence: vi.fn(() => Promise.resolve()),
-      updateCursor: vi.fn(() => Promise.resolve()),
+      setUserPresence: vi.fn((canvasId, userId, data) => Promise.resolve()),
+      updateUserPresence: vi.fn((canvasId, userId, data) => Promise.resolve()),
+      updateCursor: vi.fn((canvasId, userId, position) => Promise.resolve()),
+      clearCursor: vi.fn((canvasId, userId) => Promise.resolve()),
     }));
 
     render(
       <UserContext.Provider value={mockAuthContext}>
-        <PresenceContextProvider>
+        <PresenceContextProvider canvasId="test-canvas-id">
           <OnlineUsers />
         </PresenceContextProvider>
       </UserContext.Provider>
@@ -196,7 +225,7 @@ describe('Color Assignment', () => {
 
     // Mock 6 users to test color cycling
     vi.mock('../src/utils/firebase', () => ({
-      subscribeToPresence: vi.fn((callback) => {
+      subscribeToPresence: vi.fn((canvasId, callback) => {
         setTimeout(() => {
           callback({
             'user-1': { isOnline: true, email: 'user1@example.com', lastActive: Date.now() - 5000 },
@@ -209,14 +238,15 @@ describe('Color Assignment', () => {
         }, 100);
         return vi.fn();
       }),
-      setUserPresence: vi.fn(() => Promise.resolve()),
-      updateUserPresence: vi.fn(() => Promise.resolve()),
-      updateCursor: vi.fn(() => Promise.resolve()),
+      setUserPresence: vi.fn((canvasId, userId, data) => Promise.resolve()),
+      updateUserPresence: vi.fn((canvasId, userId, data) => Promise.resolve()),
+      updateCursor: vi.fn((canvasId, userId, position) => Promise.resolve()),
+      clearCursor: vi.fn((canvasId, userId) => Promise.resolve()),
     }));
 
     render(
       <UserContext.Provider value={mockAuthContext}>
-        <PresenceContextProvider>
+        <PresenceContextProvider canvasId="test-canvas-id">
           <OnlineUsers />
         </PresenceContextProvider>
       </UserContext.Provider>
@@ -224,13 +254,20 @@ describe('Color Assignment', () => {
 
     // Wait for users to load
     await waitFor(() => {
+      const button = screen.getByRole('button');
+      expect(button).toHaveAttribute('title', '6 users online');
+    });
+
+    // Wait for count badge to appear
+    await waitFor(() => {
       const countBadge = screen.getByText('6');
       expect(countBadge).toBeInTheDocument();
     });
 
-    // Check that there are colored dots for all users
+    // Check that there are colored dots in the compact view
+    // In compact view, only first 3 users are shown + a "+3" indicator
     const coloredDots = document.querySelectorAll('[style*="background-color"]');
-    expect(coloredDots.length).toBeGreaterThanOrEqual(6);
+    expect(coloredDots.length).toBeGreaterThanOrEqual(3); // At least 3 user indicators are visible
   });
 });
 

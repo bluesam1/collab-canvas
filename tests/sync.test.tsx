@@ -12,13 +12,13 @@ vi.mock('../src/utils/firebase', () => {
   let subscriberCallback: ((data: Record<string, unknown>) => void) | null = null;
 
   return {
-    subscribeToObjects: vi.fn((callback: (data: Record<string, unknown>) => void) => {
+    subscribeToObjects: vi.fn((canvasId: string, callback: (data: Record<string, unknown>) => void) => {
       subscriberCallback = callback;
       // Immediately call with current state
       callback(mockObjects);
       return vi.fn(); // Return unsubscribe function
     }),
-    createObject: vi.fn(async (data: Record<string, unknown>) => {
+    createObject: vi.fn(async (canvasId: string, data: Record<string, unknown>) => {
       const id = data.id as string;
       mockObjects[id] = data;
       // Simulate Firebase update
@@ -27,7 +27,7 @@ vi.mock('../src/utils/firebase', () => {
       }
       return id;
     }),
-    updateObject: vi.fn(async (id: string, updates: Record<string, unknown>) => {
+    updateObject: vi.fn(async (canvasId: string, id: string, updates: Record<string, unknown>) => {
       if (mockObjects[id]) {
         mockObjects[id] = { ...mockObjects[id], ...updates };
         // Simulate Firebase update
@@ -36,7 +36,7 @@ vi.mock('../src/utils/firebase', () => {
         }
       }
     }),
-    deleteObject: vi.fn(async (id: string) => {
+    deleteObject: vi.fn(async (canvasId: string, id: string) => {
       delete mockObjects[id];
       // Simulate Firebase update
       if (subscriberCallback) {
@@ -164,7 +164,7 @@ describe('Firebase Real-time Sync', () => {
   it('should write to Firebase when creating a rectangle', async () => {
     render(
       <MockUserProvider>
-        <CanvasContextProvider>
+        <CanvasContextProvider canvasId="test-canvas-id">
           <TestSyncComponent />
         </CanvasContextProvider>
       </MockUserProvider>
@@ -190,7 +190,7 @@ describe('Firebase Real-time Sync', () => {
   it('should write to Firebase when updating rectangle position', async () => {
     render(
       <MockUserProvider>
-        <CanvasContextProvider>
+        <CanvasContextProvider canvasId="test-canvas-id">
           <TestSyncComponent />
         </CanvasContextProvider>
       </MockUserProvider>
@@ -226,7 +226,7 @@ describe('Firebase Real-time Sync', () => {
   it('should remove from Firebase when deleting rectangle', async () => {
     render(
       <MockUserProvider>
-        <CanvasContextProvider>
+        <CanvasContextProvider canvasId="test-canvas-id">
           <TestSyncComponent />
         </CanvasContextProvider>
       </MockUserProvider>
@@ -259,7 +259,7 @@ describe('Firebase Real-time Sync', () => {
   it('should update local state when remote changes are detected', async () => {
     render(
       <MockUserProvider>
-        <CanvasContextProvider>
+        <CanvasContextProvider canvasId="test-canvas-id">
           <TestSyncComponent />
         </CanvasContextProvider>
       </MockUserProvider>
@@ -300,7 +300,7 @@ describe('Firebase Real-time Sync', () => {
   it('should handle multiple rapid updates without conflicts', async () => {
     render(
       <MockUserProvider>
-        <CanvasContextProvider>
+        <CanvasContextProvider canvasId="test-canvas-id">
           <TestSyncComponent />
         </CanvasContextProvider>
       </MockUserProvider>
@@ -345,7 +345,7 @@ describe('Firebase Real-time Sync', () => {
   it('should implement last-write-wins strategy for concurrent updates', async () => {
     render(
       <MockUserProvider>
-        <CanvasContextProvider>
+        <CanvasContextProvider canvasId="test-canvas-id">
           <TestSyncComponent />
         </CanvasContextProvider>
       </MockUserProvider>
@@ -403,7 +403,7 @@ describe('Firebase Real-time Sync', () => {
   it('should show loading state while fetching initial data', async () => {
     render(
       <MockUserProvider>
-        <CanvasContextProvider>
+        <CanvasContextProvider canvasId="test-canvas-id">
           <TestSyncComponent />
         </CanvasContextProvider>
       </MockUserProvider>
@@ -425,7 +425,7 @@ describe('Firebase Real-time Sync', () => {
 
     render(
       <MockUserProvider>
-        <CanvasContextProvider>
+        <CanvasContextProvider canvasId="test-canvas-id">
           <TestSyncComponent />
         </CanvasContextProvider>
       </MockUserProvider>
@@ -459,7 +459,7 @@ describe('End-to-End Integration Tests', () => {
   it('should complete full user flow: login → create → move → delete', async () => {
     render(
       <MockUserProvider>
-        <CanvasContextProvider>
+        <CanvasContextProvider canvasId="test-canvas-id">
           <TestSyncComponent />
         </CanvasContextProvider>
       </MockUserProvider>
@@ -508,7 +508,7 @@ describe('End-to-End Integration Tests', () => {
   it('should handle multiple users interacting simultaneously', async () => {
     render(
       <MockUserProvider>
-        <CanvasContextProvider>
+        <CanvasContextProvider canvasId="test-canvas-id">
           <TestSyncComponent />
         </CanvasContextProvider>
       </MockUserProvider>
@@ -560,7 +560,7 @@ describe('End-to-End Integration Tests', () => {
   it('should handle selection conflicts with first selection wins', async () => {
     render(
       <MockUserProvider>
-        <CanvasContextProvider>
+        <CanvasContextProvider canvasId="test-canvas-id">
           <TestSyncComponent />
         </CanvasContextProvider>
       </MockUserProvider>
@@ -614,7 +614,7 @@ describe('End-to-End Integration Tests', () => {
   it('should handle rapid concurrent updates without data corruption', async () => {
     render(
       <MockUserProvider>
-        <CanvasContextProvider>
+        <CanvasContextProvider canvasId="test-canvas-id">
           <TestSyncComponent />
         </CanvasContextProvider>
       </MockUserProvider>
@@ -661,7 +661,7 @@ describe('End-to-End Integration Tests', () => {
   it('should handle network disconnection and reconnection gracefully', async () => {
     render(
       <MockUserProvider>
-        <CanvasContextProvider>
+        <CanvasContextProvider canvasId="test-canvas-id">
           <TestSyncComponent />
         </CanvasContextProvider>
       </MockUserProvider>
