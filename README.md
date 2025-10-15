@@ -12,22 +12,27 @@ A real-time collaborative canvas application where multiple users can create, mo
 
 ## ✨ Features
 
-- 🎨 **Real-time Collaboration**: See other users' changes instantly
-- 🖱️ **Multiplayer Cursors**: View other users' cursor positions with name labels
-- 📦 **Shape Creation**: Click and drag to create colored rectangles
-- 🎯 **Shape Manipulation**: Select, move, and delete shapes
-- 👥 **Presence System**: See who's online with colored indicators
+- 📋 **Multiple Canvases**: Create and manage unlimited canvases with organized list view
+- 🔗 **URL-Based Sharing**: Share canvases instantly by copying the link - no invite system needed
+- 🎨 **Real-time Collaboration**: See other users' changes instantly (<100ms sync)
+- 🖱️ **Multiplayer Cursors**: View other users' cursor positions with name labels (<50ms updates)
+- 🎨 **Dual Modes**: Switch between Pan mode (navigate) and Rectangle mode (draw)
+- 📦 **Shape Creation**: Click and drag to create colored rectangles with 5-color palette
+- 🎯 **Shape Manipulation**: Select, move, and delete shapes with keyboard shortcuts
+- 👥 **Presence System**: See who's online with colored indicators per canvas
 - 🔒 **Secure Authentication**: Email link and Google Sign-In support
-- 📱 **Responsive Canvas**: Pan and zoom with smooth animations
+- 📱 **Responsive Canvas**: Pan and zoom with smooth 60 FPS animations
 - ⚡ **Optimized Performance**: Handles 100+ shapes with multiple concurrent users
 
 ## Tech Stack
 
 - **Frontend**: React 19, TypeScript, Vite
 - **Canvas**: Konva, React-Konva
+- **Routing**: React Router DOM v7
 - **Backend**: Firebase Realtime Database
 - **Authentication**: Firebase Auth (Email Link & Google Sign-In)
 - **Styling**: Tailwind CSS v4
+- **Icons**: Lucide React
 - **Testing**: Vitest, React Testing Library
 
 ## 🚀 Quick Start
@@ -233,21 +238,74 @@ collab-canvas/
 │   └── styles/                     # Global styles
 ├── tests/                          # Test files
 ├── public/                         # Static assets
+├── memory-bank/                    # Project documentation
+├── .cursor/rules/                  # AI coding guidelines
 ├── .env.example                    # Environment variables template
 └── package.json                    # Dependencies
 ```
 
+## 📚 Documentation & Project Intelligence
+
+### Memory Bank
+
+The `memory-bank/` directory contains comprehensive project documentation that persists across development sessions:
+
+- **`projectbrief.md`** - Project overview, requirements, and status
+- **`productContext.md`** - User experience, problem-solving approach, and roadmap
+- **`systemPatterns.md`** - Architecture decisions and design patterns
+- **`techContext.md`** - Technology stack and development setup
+- **`activeContext.md`** - Current work, recent changes, and open questions
+- **`progress.md`** - Detailed feature checklist and completion status
+
+**When to read:** Essential for understanding project context, especially when resuming work or onboarding new developers.
+
+### Project Rules (.cursor/rules/)
+
+AI-powered coding guidelines ensure consistent patterns across the codebase:
+
+- **`base.mdc`** - Core project patterns and conventions
+- **`firebase.mdc`** - Firebase-specific patterns (listeners, optimistic updates)
+- **`react-components.mdc`** - React component patterns and best practices
+
+**Purpose:** These rules guide AI assistants and developers to maintain code quality and consistency.
+
+### Planning Documents
+
+The `planning/` directory contains original design documents:
+
+- **`PRD.md`** - Product Requirements Document (MVP scope)
+- **`architecture.md`** - System architecture diagram
+- **`tasklist.md`** - PR breakdown and task tracking
+- **`PR_15.md`** - Canvas sharing feature specifications
+
 ## How to Use
 
+### Getting Started
 1. **Sign In**: Use email link authentication or Google Sign-In
-2. **Create Shapes**: Click and drag on the canvas to create rectangles
-3. **Select Colors**: Choose from 5 colors in the toolbar
-4. **Move Shapes**: Click to select, then drag to move
-5. **Delete Shapes**: Select a shape and click Delete button (or press Delete/Backspace)
-6. **Pan Canvas**: Drag the canvas background to pan
-7. **Zoom Canvas**: Use mouse wheel to zoom in/out
-8. **See Collaborators**: View online users in the top-right corner
-9. **See Cursors**: Watch other users' cursors move in real-time
+2. **Create Canvas**: Click "New Canvas" button and give it a name
+3. **Share Canvas**: Copy the canvas URL from the menu to share with collaborators
+
+### Canvas List
+4. **Search Canvases**: Use the search bar to filter by name
+5. **My Canvases**: View and manage canvases you created
+6. **Shared With Me**: See canvases others have shared with you
+7. **Canvas Actions**: Rename, copy link, or delete canvases you own
+
+### Working on Canvas
+8. **Switch Modes**: Toggle between Pan mode (move canvas) and Rectangle mode (draw shapes)
+   - Press `V` for Pan mode
+   - Press `R` for Rectangle mode
+9. **Create Shapes**: In Rectangle mode, click and drag to create rectangles
+10. **Select Colors**: Choose from 5 colors in the toolbar
+11. **Move Shapes**: Click to select, then drag to move
+12. **Delete Shapes**: Select a shape and click Delete button (or press Delete/Backspace)
+13. **Pan Canvas**: In Pan mode, drag to move around the workspace
+14. **Zoom Canvas**: Use mouse wheel to zoom in/out
+
+### Collaboration
+15. **See Collaborators**: View online users in the top-right corner
+16. **See Cursors**: Watch other users' cursors move in real-time
+17. **Real-time Sync**: All changes appear instantly for everyone
 
 ## Features Details
 
@@ -782,11 +840,12 @@ This is an MVP project built for learning purposes. Contributions welcome!
 
 ## 📊 Project Status
 
-- **Current Version**: MVP (v1.0)
-- **Status**: ✅ Complete and ready for deployment
-- **Last Updated**: October 2025
+- **Current Version**: v1.1 (MVP + Enhanced Features)
+- **Status**: ✅ Complete and deployed
+- **Last Updated**: October 15, 2025
 - **Build Status**: ✅ Passing
 - **Test Coverage**: >70%
+- **Live URL**: [https://collab-canvas-2ba2e.web.app/](https://collab-canvas-2ba2e.web.app/)
 
 ### Completed Milestones
 - ✅ PR #1: Project setup and configuration
@@ -802,6 +861,9 @@ This is an MVP project built for learning purposes. Contributions welcome!
 - ✅ PR #11: Presence system and online users
 - ✅ PR #12: Integration testing and bug fixes
 - ✅ PR #13: Deployment setup and documentation
+- ✅ PR #13.1: Canvas mode switching (Pan vs Rectangle)
+- ✅ PR #15: Canvas ownership & URL-based sharing
+- ✅ Documentation: Memory Bank and project rules system
 
 ## 📝 License
 

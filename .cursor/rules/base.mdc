@@ -1,0 +1,402 @@
+---
+alwaysApply: true
+---
+
+Description: Core project patterns and conventions for CollabCanvas
+Globs: **/*
+
+# CollabCanvas Project Rules
+
+## Project Overview
+CollabCanvas is a real-time collaborative canvas application. The codebase prioritizes:
+1. **Real-time sync reliability** - optimistic updates with Firebase listeners
+2. **Performance** - 60 FPS canvas rendering, <100ms sync latency
+3. **Type safety** - TypeScript strict mode throughout
+4. **Simplicity** - Context API over Redux, straightforward patterns
+
+## Code Style
+
+### TypeScript
+- Use strict mode (enabled in tsconfig.json)
+- Prefer `interface` over `type` for object shapes
+- Use `type` for unions, primitives, and utility types
+- Explicit return types for exported functions
+- No `any` types (use `unknown` if truly dynamic)
+
+### React Patterns
+- Functional components only (no class components)
+- Custom hooks for reusable logic (prefix with `use`)
+- Context + hooks pattern for state management
+- React.memo for expensive components (Konva shapes)
+- Clean up effects properly (return cleanup functions)
+
+### File Organization
+- One component per file
+- Co-locate related files (hooks with contexts)
+- Group by feature, not by type (components/canvas/, not components/buttons/)
+- Index files for clean exports when needed
+
+### Naming Conventions
+- Components: PascalCase (e.g., `CanvasEditor.tsx`)
+- Hooks: camelCase with `use` prefix (e.g., `useCanvas.ts`)
+- Contexts: PascalCase with `Context` suffix (e.g., `CanvasContext.tsx`)
+- Utils: camelCase (e.g., `firebase.ts`)
+- Types: PascalCase (e.g., `Rectangle`, `CanvasMode`)
+
+## Architecture Principles
+
+### Context Pattern
+Every context follows this structure:
+```typescript
+// 1. Create context
+export const MyContext = createContext<MyContextType | undefined>(undefined);
+
+// 2. Provider component
+export const MyContextProvider = ({ children }: { children: ReactNode }) => {
+  // State and logic here
+  return <MyContext.Provider value={...}>{children}</MyContext.Provider>;
+};
+
+// 3. Custom hook (in separate file)
+export const useMyContext = () => {
+  const context = useContext(MyContext);
+  if (!context) {
+    throw new Error('useMyContext must be used within MyContextProvider');
+  }
+  return context;
+};
+```
+
+### Firebase Patterns
+- **Optimistic updates**: Update local state first, then write to Firebase
+- **Listener cleanup**: Always return cleanup function from useEffect
+- **Error handling**: If Firebase write fails, listener will revert to correct state
+- **Scoping**: Use canvas ID in paths for isolation (`/objects/{canvasId}`)
+
+### State Updates
+- Use functional setState for updates based on previous state
+- Avoid stale closures by using functional updates
+- Example: `setObjects(prev => [...prev, newObject])`
+
+## Performance Guidelines
+
+### Canvas Rendering
+- Use React.memo for Rectangle components
+- Avoid unnecessary re-renders with proper dependencies
+- Keep Konva layer structure flat (no deep nesting)
+- Batch updates when possible
+
+### Firebase Operations
+- Throttle cursor updates (50ms)
+- Debounce search input (300ms)
+- Use Firebase transactions for atomic operations if needed
+- Clean up listeners on unmount to prevent memory leaks
+
+### Bundle Size
+- Use dynamic imports for heavy features when beneficial
+- Tree-shakeable icon imports: `import { IconName } from 'lucide-react'`
+- No default exports for utilities (better tree-shaking)
+
+## Error Handling
+
+### User-Facing Errors
+- Show toast notifications for operation failures
+- Provide actionable error messages (not technical jargon)
+- Redirect gracefully for fatal errors (e.g., canvas not found)
+
+### Developer Errors
+- Use console.error for logging (not console.log in error paths)
+- Throw descriptive errors with context
+- ErrorBoundary catches unhandled React errors
+
+### Firebase Errors
+- Network errors: Show toast, auto-retry connection
+- Permission errors: Redirect to error page with explanation
+- Write failures: Optimistic update reverts via listener
+
+## Testing Philosophy
+
+### What to Test
+- Context logic (state updates, CRUD operations)
+- Critical user flows (auth, create canvas, sync)
+- Edge cases (empty states, errors, conflicts)
+
+### What Not to Test
+- Visual appearance (use manual testing)
+- Third-party libraries (trust Firebase, Konva)
+- Simple components without logic (pure UI)
+
+### Test Structure
+```typescript
+describe('Feature', () => {
+  it('should do expected behavior', () => {
+    // Arrange: Setup
+    // Act: Trigger action
+    // Assert: Verify result
+  });
+});
+```
+
+## Common Patterns
+
+### Loading States
+```typescript
+const [isLoading, setIsLoading] = useState(true);
+// Set false after data loads
+```
+
+### Modal State
+```typescript
+const [isOpen, setIsOpen] = useState(false);
+const open = () => setIsOpen(true);
+const close = () => setIsOpen(false);
+```
+
+### Form Validation
+- Trim whitespace before validation
+- Disable submit until valid
+- Clear error on input change
+
+### Toast Notifications
+- Success: 3 seconds
+- Error: 5 seconds
+- Info: 3 seconds
+- Always dismissible
+
+## Dependencies
+
+### Adding New Dependencies
+Consider before adding:
+1. Is it really needed? (can we implement simply?)
+2. Bundle size impact
+3. Maintenance status (last updated, stars)
+4. TypeScript support
+
+### Preferred Libraries
+- Icons: lucide-react (already included)
+- Dates: Native Date API (no date-fns for simple needs)
+- State: React Context (no Redux unless truly needed)
+- Forms: Controlled components (no Formik for simple forms)
+
+## Git Workflow
+
+### Commit Messages
+Format: `<type>: <description>`
+- feat: New feature
+- fix: Bug fix
+- refactor: Code restructure
+- docs: Documentation
+- test: Add/update tests
+- chore: Maintenance
+
+Example: `feat: add canvas search with debouncing`
+
+### Branch Naming
+- Feature: `feature/description`
+- Fix: `fix/description`
+- PR-based: `pr-15-canvas-sharing`
+
+## When in Doubt
+1. Check existing patterns in the codebase
+2. Refer to Memory Bank documentation
+3. Keep it simple - avoid over-engineering
+4. Test with multiple users if touching real-time features
+Description: Core project patterns and conventions for CollabCanvas
+Globs: **/*
+
+# CollabCanvas Project Rules
+
+## Project Overview
+CollabCanvas is a real-time collaborative canvas application. The codebase prioritizes:
+1. **Real-time sync reliability** - optimistic updates with Firebase listeners
+2. **Performance** - 60 FPS canvas rendering, <100ms sync latency
+3. **Type safety** - TypeScript strict mode throughout
+4. **Simplicity** - Context API over Redux, straightforward patterns
+
+## Code Style
+
+### TypeScript
+- Use strict mode (enabled in tsconfig.json)
+- Prefer `interface` over `type` for object shapes
+- Use `type` for unions, primitives, and utility types
+- Explicit return types for exported functions
+- No `any` types (use `unknown` if truly dynamic)
+
+### React Patterns
+- Functional components only (no class components)
+- Custom hooks for reusable logic (prefix with `use`)
+- Context + hooks pattern for state management
+- React.memo for expensive components (Konva shapes)
+- Clean up effects properly (return cleanup functions)
+
+### File Organization
+- One component per file
+- Co-locate related files (hooks with contexts)
+- Group by feature, not by type (components/canvas/, not components/buttons/)
+- Index files for clean exports when needed
+
+### Naming Conventions
+- Components: PascalCase (e.g., `CanvasEditor.tsx`)
+- Hooks: camelCase with `use` prefix (e.g., `useCanvas.ts`)
+- Contexts: PascalCase with `Context` suffix (e.g., `CanvasContext.tsx`)
+- Utils: camelCase (e.g., `firebase.ts`)
+- Types: PascalCase (e.g., `Rectangle`, `CanvasMode`)
+
+## Architecture Principles
+
+### Context Pattern
+Every context follows this structure:
+```typescript
+// 1. Create context
+export const MyContext = createContext<MyContextType | undefined>(undefined);
+
+// 2. Provider component
+export const MyContextProvider = ({ children }: { children: ReactNode }) => {
+  // State and logic here
+  return <MyContext.Provider value={...}>{children}</MyContext.Provider>;
+};
+
+// 3. Custom hook (in separate file)
+export const useMyContext = () => {
+  const context = useContext(MyContext);
+  if (!context) {
+    throw new Error('useMyContext must be used within MyContextProvider');
+  }
+  return context;
+};
+```
+
+### Firebase Patterns
+- **Optimistic updates**: Update local state first, then write to Firebase
+- **Listener cleanup**: Always return cleanup function from useEffect
+- **Error handling**: If Firebase write fails, listener will revert to correct state
+- **Scoping**: Use canvas ID in paths for isolation (`/objects/{canvasId}`)
+
+### State Updates
+- Use functional setState for updates based on previous state
+- Avoid stale closures by using functional updates
+- Example: `setObjects(prev => [...prev, newObject])`
+
+## Performance Guidelines
+
+### Canvas Rendering
+- Use React.memo for Rectangle components
+- Avoid unnecessary re-renders with proper dependencies
+- Keep Konva layer structure flat (no deep nesting)
+- Batch updates when possible
+
+### Firebase Operations
+- Throttle cursor updates (50ms)
+- Debounce search input (300ms)
+- Use Firebase transactions for atomic operations if needed
+- Clean up listeners on unmount to prevent memory leaks
+
+### Bundle Size
+- Use dynamic imports for heavy features when beneficial
+- Tree-shakeable icon imports: `import { IconName } from 'lucide-react'`
+- No default exports for utilities (better tree-shaking)
+
+## Error Handling
+
+### User-Facing Errors
+- Show toast notifications for operation failures
+- Provide actionable error messages (not technical jargon)
+- Redirect gracefully for fatal errors (e.g., canvas not found)
+
+### Developer Errors
+- Use console.error for logging (not console.log in error paths)
+- Throw descriptive errors with context
+- ErrorBoundary catches unhandled React errors
+
+### Firebase Errors
+- Network errors: Show toast, auto-retry connection
+- Permission errors: Redirect to error page with explanation
+- Write failures: Optimistic update reverts via listener
+
+## Testing Philosophy
+
+### What to Test
+- Context logic (state updates, CRUD operations)
+- Critical user flows (auth, create canvas, sync)
+- Edge cases (empty states, errors, conflicts)
+
+### What Not to Test
+- Visual appearance (use manual testing)
+- Third-party libraries (trust Firebase, Konva)
+- Simple components without logic (pure UI)
+
+### Test Structure
+```typescript
+describe('Feature', () => {
+  it('should do expected behavior', () => {
+    // Arrange: Setup
+    // Act: Trigger action
+    // Assert: Verify result
+  });
+});
+```
+
+## Common Patterns
+
+### Loading States
+```typescript
+const [isLoading, setIsLoading] = useState(true);
+// Set false after data loads
+```
+
+### Modal State
+```typescript
+const [isOpen, setIsOpen] = useState(false);
+const open = () => setIsOpen(true);
+const close = () => setIsOpen(false);
+```
+
+### Form Validation
+- Trim whitespace before validation
+- Disable submit until valid
+- Clear error on input change
+
+### Toast Notifications
+- Success: 3 seconds
+- Error: 5 seconds
+- Info: 3 seconds
+- Always dismissible
+
+## Dependencies
+
+### Adding New Dependencies
+Consider before adding:
+1. Is it really needed? (can we implement simply?)
+2. Bundle size impact
+3. Maintenance status (last updated, stars)
+4. TypeScript support
+
+### Preferred Libraries
+- Icons: lucide-react (already included)
+- Dates: Native Date API (no date-fns for simple needs)
+- State: React Context (no Redux unless truly needed)
+- Forms: Controlled components (no Formik for simple forms)
+
+## Git Workflow
+
+### Commit Messages
+Format: `<type>: <description>`
+- feat: New feature
+- fix: Bug fix
+- refactor: Code restructure
+- docs: Documentation
+- test: Add/update tests
+- chore: Maintenance
+
+Example: `feat: add canvas search with debouncing`
+
+### Branch Naming
+- Feature: `feature/description`
+- Fix: `fix/description`
+- PR-based: `pr-15-canvas-sharing`
+
+## When in Doubt
+1. Check existing patterns in the codebase
+2. Refer to Memory Bank documentation
+3. Keep it simple - avoid over-engineering
+4. Test with multiple users if touching real-time features

@@ -1,0 +1,976 @@
+---
+alwaysApply: true
+---
+
+Description: React component patterns and best practices for CollabCanvas
+Globs: src/components/**/*.tsx, src/pages/**/*.tsx
+
+# React Component Patterns
+
+## Component Structure
+
+### Standard Component Format
+```typescript
+import { useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
+import { useContext } from '../hooks/useContext';
+
+interface ComponentProps {
+  // Props with explicit types
+  title: string;
+  onClose?: () => void;
+  children?: ReactNode;
+}
+
+export const Component = ({ title, onClose, children }: ComponentProps) => {
+  // 1. Hooks (always at top)
+  const [state, setState] = useState<string>('');
+  const context = useContext();
+
+  // 2. Effects
+  useEffect(() => {
+    // Effect logic
+    return () => {
+      // Cleanup
+    };
+  }, [deps]);
+
+  // 3. Event handlers
+  const handleClick = () => {
+    // Handler logic
+  };
+
+  // 4. Render
+  return (
+    <div>
+      {/* JSX */}
+    </div>
+  );
+};
+```
+
+## Konva Components
+
+### Rectangle Component Pattern
+Konva components need special attention for performance:
+
+```typescript
+import { memo } from 'react';
+import { Rect } from 'react-konva';
+import type { Rectangle as RectangleType } from '../types';
+
+interface RectangleProps {
+  rectangle: RectangleType;
+  isSelected: boolean;
+  onClick: () => void;
+  onDragEnd: (e: KonvaEventObject<DragEvent>) => void;
+}
+
+export const Rectangle = memo(({ 
+  rectangle, 
+  isSelected, 
+  onClick, 
+  onDragEnd 
+}: RectangleProps) => {
+  return (
+    <Rect
+      x={rectangle.x}
+      y={rectangle.y}
+      width={rectangle.width}
+      height={rectangle.height}
+      fill={rectangle.fill}
+      stroke={isSelected ? '#000' : undefined}
+      strokeWidth={isSelected ? 2 : 0}
+      draggable={isSelected}
+      onClick={onClick}
+      onDragEnd={onDragEnd}
+    />
+  );
+});
+
+Rectangle.displayName = 'Rectangle';
+```
+
+### Canvas Component Pattern
+Main canvas uses Konva Stage and Layer:
+
+```typescript
+import { Stage, Layer } from 'react-konva';
+import { useCanvas } from '../hooks/useCanvas';
+import { Rectangle } from './Rectangle';
+
+export const Canvas = () => {
+  const { objects, selectedIds, mode } = useCanvas();
+  const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
+  const [stageScale, setStageScale] = useState(1);
+
+  // Pan and zoom logic...
+
+  return (
+    <Stage
+      width={window.innerWidth}
+      height={window.innerHeight}
+      x={stagePos.x}
+      y={stagePos.y}
+      scaleX={stageScale}
+      scaleY={stageScale}
+      draggable={mode === 'pan'}
+      onWheel={handleWheel}
+      // ... other handlers
+    >
+      <Layer>
+        {objects.map(obj => (
+          <Rectangle
+            key={obj.id}
+            rectangle={obj}
+            isSelected={selectedIds.includes(obj.id)}
+            onClick={() => handleSelect(obj.id)}
+            onDragEnd={(e) => handleDragEnd(obj.id, e)}
+          />
+        ))}
+      </Layer>
+    </Stage>
+  );
+};
+```
+
+## Modal Components
+
+### Modal Pattern
+All modals follow this structure:
+
+```typescript
+interface ModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  children: ReactNode;
+}
+
+export const Modal = ({ isOpen, onClose, title, children }: ModalProps) => {
+  if (!isOpen) return null;
+
+  return (
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full"
+        onClick={(e) => e.stopPropagation()} // Prevent close on content click
+      >
+        <h2 className="text-xl font-bold mb-4">{title}</h2>
+        {children}
+      </div>
+    </div>
+  );
+};
+```
+
+### Form Modal Pattern
+```typescript
+export const CreateCanvasModal = ({ isOpen, onClose }: ModalProps) => {
+  const [name, setName] = useState('Untitled Canvas');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (name.trim() === '') return;
+
+    setIsSubmitting(true);
+    try {
+      await createCanvas(name.trim());
+      onClose();
+    } catch (error) {
+      console.error('Failed to create canvas:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Create Canvas">
+      <form onSubmit={handleSubmit}>
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="w-full px-3 py-2 border rounded"
+          autoFocus
+        />
+        <div className="flex gap-2 mt-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 px-4 py-2 border rounded"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={isSubmitting || name.trim() === ''}
+            className="flex-1 px-4 py-2 bg-blue-500 text-white rounded disabled:opacity-50"
+          >
+            {isSubmitting ? 'Creating...' : 'Create'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+};
+```
+
+## List Components
+
+### Canvas List Pattern
+```typescript
+export const CanvasListPage = () => {
+  const { canvases, isLoading, searchQuery, setSearchQuery } = useCanvasList();
+
+  const ownedCanvases = canvases.filter(c => c.isOwned);
+  const sharedCanvases = canvases.filter(c => !c.isOwned);
+
+  if (isLoading) {
+    return <LoadingSpinner message="Loading canvases..." />;
+  }
+
+  if (canvases.length === 0 && !searchQuery) {
+    return <EmptyState message="No canvases yet" onAction={handleCreate} />;
+  }
+
+  return (
+    <div className="container mx-auto p-6">
+      <SearchBar value={searchQuery} onChange={setSearchQuery} />
+      
+      {ownedCanvases.length > 0 && (
+        <section>
+          <h2 className="text-2xl font-bold mb-4">My Canvases</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {ownedCanvases.map(canvas => (
+              <CanvasCard key={canvas.id} canvas={canvas} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {sharedCanvases.length > 0 && (
+        <section className="mt-8">
+          <h2 className="text-2xl font-bold mb-4">Shared With Me</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {sharedCanvases.map(canvas => (
+              <CanvasCard key={canvas.id} canvas={canvas} />
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+};
+```
+
+## Common Components
+
+### Loading Spinner
+```typescript
+interface LoadingSpinnerProps {
+  message?: string;
+  fullScreen?: boolean;
+}
+
+export const LoadingSpinner = ({ 
+  message, 
+  fullScreen = true 
+}: LoadingSpinnerProps) => {
+  const containerClass = fullScreen 
+    ? 'fixed inset-0 flex items-center justify-center'
+    : 'flex items-center justify-center py-8';
+
+  return (
+    <div className={containerClass}>
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500" />
+        {message && <p className="mt-4 text-gray-600">{message}</p>}
+      </div>
+    </div>
+  );
+};
+```
+
+### Toast Notification
+```typescript
+interface ToastProps {
+  message: string;
+  type: 'success' | 'error' | 'info';
+  onClose: () => void;
+}
+
+export const Toast = ({ message, type, onClose }: ToastProps) => {
+  useEffect(() => {
+    const duration = type === 'error' ? 5000 : 3000;
+    const timer = setTimeout(onClose, duration);
+    return () => clearTimeout(timer);
+  }, [type, onClose]);
+
+  const bgColor = {
+    success: 'bg-green-500',
+    error: 'bg-red-500',
+    info: 'bg-blue-500'
+  }[type];
+
+  return (
+    <div className={`${bgColor} text-white px-4 py-3 rounded shadow-lg flex items-center justify-between`}>
+      <span>{message}</span>
+      <button onClick={onClose} className="ml-4">×</button>
+    </div>
+  );
+};
+```
+
+## Event Handlers
+
+### Form Submission
+```typescript
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault(); // Always prevent default
+  
+  // Validation
+  if (!isValid) return;
+
+  setIsSubmitting(true);
+  try {
+    await submitAction();
+    onSuccess();
+  } catch (error) {
+    console.error('Submit failed:', error);
+    showError('Failed to submit');
+  } finally {
+    setIsSubmitting(false);
+  }
+};
+```
+
+### Input Change
+```typescript
+const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const value = e.target.value;
+  setValue(value);
+  
+  // Optional: Clear error on change
+  if (error) setError(null);
+};
+```
+
+### Click Handler
+```typescript
+const handleClick = (e: React.MouseEvent) => {
+  // Prevent event propagation if needed
+  e.stopPropagation();
+  
+  // Your logic
+  performAction();
+};
+```
+
+### Keyboard Handler
+```typescript
+useEffect(() => {
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      handleClose();
+    }
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      handleDelete();
+    }
+    // Support Ctrl/Cmd + key
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      e.preventDefault();
+      handleSearch();
+    }
+  };
+
+  window.addEventListener('keydown', handleKeyDown);
+  return () => window.removeEventListener('keydown', handleKeyDown);
+}, [deps]);
+```
+
+## Performance Optimization
+
+### Use memo for Expensive Components
+```typescript
+import { memo } from 'react';
+
+export const ExpensiveComponent = memo(({ data }: Props) => {
+  // Component logic
+  return <div>...</div>;
+});
+```
+
+### Use useCallback for Event Handlers
+```typescript
+const handleClick = useCallback(() => {
+  // Handler logic
+}, [deps]);
+```
+
+### Use useMemo for Expensive Computations
+```typescript
+const filteredData = useMemo(() => {
+  return data.filter(item => item.name.includes(query));
+}, [data, query]);
+```
+
+## Accessibility
+
+### Keyboard Navigation
+- All interactive elements should be keyboard accessible
+- Use `tabIndex` appropriately
+- Support Escape to close modals
+
+### ARIA Labels
+```typescript
+<button
+  aria-label="Close modal"
+  onClick={onClose}
+>
+  ×
+</button>
+```
+
+### Focus Management
+```typescript
+useEffect(() => {
+  if (isOpen) {
+    inputRef.current?.focus();
+  }
+}, [isOpen]);
+```
+
+## Common Patterns to Avoid
+
+### ❌ Don't Mutate State
+```typescript
+// Bad
+objects.push(newObject);
+setObjects(objects);
+
+// Good
+setObjects([...objects, newObject]);
+```
+
+### ❌ Don't Forget Keys in Lists
+```typescript
+// Bad
+{items.map(item => <Item {...item} />)}
+
+// Good
+{items.map(item => <Item key={item.id} {...item} />)}
+```
+
+### ❌ Don't Use Index as Key
+```typescript
+// Bad
+{items.map((item, index) => <Item key={index} {...item} />)}
+
+// Good (if items have unique IDs)
+{items.map(item => <Item key={item.id} {...item} />)}
+```
+
+### ❌ Don't Call Hooks Conditionally
+```typescript
+// Bad
+if (condition) {
+  const value = useContext(MyContext);
+}
+
+// Good
+const value = useContext(MyContext);
+if (condition) {
+  // Use value
+}
+```
+Description: React component patterns and best practices for CollabCanvas
+Globs: src/components/**/*.tsx, src/pages/**/*.tsx
+
+# React Component Patterns
+
+## Component Structure
+
+### Standard Component Format
+```typescript
+import { useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
+import { useContext } from '../hooks/useContext';
+
+interface ComponentProps {
+  // Props with explicit types
+  title: string;
+  onClose?: () => void;
+  children?: ReactNode;
+}
+
+export const Component = ({ title, onClose, children }: ComponentProps) => {
+  // 1. Hooks (always at top)
+  const [state, setState] = useState<string>('');
+  const context = useContext();
+
+  // 2. Effects
+  useEffect(() => {
+    // Effect logic
+    return () => {
+      // Cleanup
+    };
+  }, [deps]);
+
+  // 3. Event handlers
+  const handleClick = () => {
+    // Handler logic
+  };
+
+  // 4. Render
+  return (
+    <div>
+      {/* JSX */}
+    </div>
+  );
+};
+```
+
+## Konva Components
+
+### Rectangle Component Pattern
+Konva components need special attention for performance:
+
+```typescript
+import { memo } from 'react';
+import { Rect } from 'react-konva';
+import type { Rectangle as RectangleType } from '../types';
+
+interface RectangleProps {
+  rectangle: RectangleType;
+  isSelected: boolean;
+  onClick: () => void;
+  onDragEnd: (e: KonvaEventObject<DragEvent>) => void;
+}
+
+export const Rectangle = memo(({ 
+  rectangle, 
+  isSelected, 
+  onClick, 
+  onDragEnd 
+}: RectangleProps) => {
+  return (
+    <Rect
+      x={rectangle.x}
+      y={rectangle.y}
+      width={rectangle.width}
+      height={rectangle.height}
+      fill={rectangle.fill}
+      stroke={isSelected ? '#000' : undefined}
+      strokeWidth={isSelected ? 2 : 0}
+      draggable={isSelected}
+      onClick={onClick}
+      onDragEnd={onDragEnd}
+    />
+  );
+});
+
+Rectangle.displayName = 'Rectangle';
+```
+
+### Canvas Component Pattern
+Main canvas uses Konva Stage and Layer:
+
+```typescript
+import { Stage, Layer } from 'react-konva';
+import { useCanvas } from '../hooks/useCanvas';
+import { Rectangle } from './Rectangle';
+
+export const Canvas = () => {
+  const { objects, selectedIds, mode } = useCanvas();
+  const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
+  const [stageScale, setStageScale] = useState(1);
+
+  // Pan and zoom logic...
+
+  return (
+    <Stage
+      width={window.innerWidth}
+      height={window.innerHeight}
+      x={stagePos.x}
+      y={stagePos.y}
+      scaleX={stageScale}
+      scaleY={stageScale}
+      draggable={mode === 'pan'}
+      onWheel={handleWheel}
+      // ... other handlers
+    >
+      <Layer>
+        {objects.map(obj => (
+          <Rectangle
+            key={obj.id}
+            rectangle={obj}
+            isSelected={selectedIds.includes(obj.id)}
+            onClick={() => handleSelect(obj.id)}
+            onDragEnd={(e) => handleDragEnd(obj.id, e)}
+          />
+        ))}
+      </Layer>
+    </Stage>
+  );
+};
+```
+
+## Modal Components
+
+### Modal Pattern
+All modals follow this structure:
+
+```typescript
+interface ModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  children: ReactNode;
+}
+
+export const Modal = ({ isOpen, onClose, title, children }: ModalProps) => {
+  if (!isOpen) return null;
+
+  return (
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full"
+        onClick={(e) => e.stopPropagation()} // Prevent close on content click
+      >
+        <h2 className="text-xl font-bold mb-4">{title}</h2>
+        {children}
+      </div>
+    </div>
+  );
+};
+```
+
+### Form Modal Pattern
+```typescript
+export const CreateCanvasModal = ({ isOpen, onClose }: ModalProps) => {
+  const [name, setName] = useState('Untitled Canvas');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (name.trim() === '') return;
+
+    setIsSubmitting(true);
+    try {
+      await createCanvas(name.trim());
+      onClose();
+    } catch (error) {
+      console.error('Failed to create canvas:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Create Canvas">
+      <form onSubmit={handleSubmit}>
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="w-full px-3 py-2 border rounded"
+          autoFocus
+        />
+        <div className="flex gap-2 mt-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 px-4 py-2 border rounded"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={isSubmitting || name.trim() === ''}
+            className="flex-1 px-4 py-2 bg-blue-500 text-white rounded disabled:opacity-50"
+          >
+            {isSubmitting ? 'Creating...' : 'Create'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+};
+```
+
+## List Components
+
+### Canvas List Pattern
+```typescript
+export const CanvasListPage = () => {
+  const { canvases, isLoading, searchQuery, setSearchQuery } = useCanvasList();
+
+  const ownedCanvases = canvases.filter(c => c.isOwned);
+  const sharedCanvases = canvases.filter(c => !c.isOwned);
+
+  if (isLoading) {
+    return <LoadingSpinner message="Loading canvases..." />;
+  }
+
+  if (canvases.length === 0 && !searchQuery) {
+    return <EmptyState message="No canvases yet" onAction={handleCreate} />;
+  }
+
+  return (
+    <div className="container mx-auto p-6">
+      <SearchBar value={searchQuery} onChange={setSearchQuery} />
+      
+      {ownedCanvases.length > 0 && (
+        <section>
+          <h2 className="text-2xl font-bold mb-4">My Canvases</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {ownedCanvases.map(canvas => (
+              <CanvasCard key={canvas.id} canvas={canvas} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {sharedCanvases.length > 0 && (
+        <section className="mt-8">
+          <h2 className="text-2xl font-bold mb-4">Shared With Me</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {sharedCanvases.map(canvas => (
+              <CanvasCard key={canvas.id} canvas={canvas} />
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+};
+```
+
+## Common Components
+
+### Loading Spinner
+```typescript
+interface LoadingSpinnerProps {
+  message?: string;
+  fullScreen?: boolean;
+}
+
+export const LoadingSpinner = ({ 
+  message, 
+  fullScreen = true 
+}: LoadingSpinnerProps) => {
+  const containerClass = fullScreen 
+    ? 'fixed inset-0 flex items-center justify-center'
+    : 'flex items-center justify-center py-8';
+
+  return (
+    <div className={containerClass}>
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500" />
+        {message && <p className="mt-4 text-gray-600">{message}</p>}
+      </div>
+    </div>
+  );
+};
+```
+
+### Toast Notification
+```typescript
+interface ToastProps {
+  message: string;
+  type: 'success' | 'error' | 'info';
+  onClose: () => void;
+}
+
+export const Toast = ({ message, type, onClose }: ToastProps) => {
+  useEffect(() => {
+    const duration = type === 'error' ? 5000 : 3000;
+    const timer = setTimeout(onClose, duration);
+    return () => clearTimeout(timer);
+  }, [type, onClose]);
+
+  const bgColor = {
+    success: 'bg-green-500',
+    error: 'bg-red-500',
+    info: 'bg-blue-500'
+  }[type];
+
+  return (
+    <div className={`${bgColor} text-white px-4 py-3 rounded shadow-lg flex items-center justify-between`}>
+      <span>{message}</span>
+      <button onClick={onClose} className="ml-4">×</button>
+    </div>
+  );
+};
+```
+
+## Event Handlers
+
+### Form Submission
+```typescript
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault(); // Always prevent default
+  
+  // Validation
+  if (!isValid) return;
+
+  setIsSubmitting(true);
+  try {
+    await submitAction();
+    onSuccess();
+  } catch (error) {
+    console.error('Submit failed:', error);
+    showError('Failed to submit');
+  } finally {
+    setIsSubmitting(false);
+  }
+};
+```
+
+### Input Change
+```typescript
+const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const value = e.target.value;
+  setValue(value);
+  
+  // Optional: Clear error on change
+  if (error) setError(null);
+};
+```
+
+### Click Handler
+```typescript
+const handleClick = (e: React.MouseEvent) => {
+  // Prevent event propagation if needed
+  e.stopPropagation();
+  
+  // Your logic
+  performAction();
+};
+```
+
+### Keyboard Handler
+```typescript
+useEffect(() => {
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      handleClose();
+    }
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      handleDelete();
+    }
+    // Support Ctrl/Cmd + key
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      e.preventDefault();
+      handleSearch();
+    }
+  };
+
+  window.addEventListener('keydown', handleKeyDown);
+  return () => window.removeEventListener('keydown', handleKeyDown);
+}, [deps]);
+```
+
+## Performance Optimization
+
+### Use memo for Expensive Components
+```typescript
+import { memo } from 'react';
+
+export const ExpensiveComponent = memo(({ data }: Props) => {
+  // Component logic
+  return <div>...</div>;
+});
+```
+
+### Use useCallback for Event Handlers
+```typescript
+const handleClick = useCallback(() => {
+  // Handler logic
+}, [deps]);
+```
+
+### Use useMemo for Expensive Computations
+```typescript
+const filteredData = useMemo(() => {
+  return data.filter(item => item.name.includes(query));
+}, [data, query]);
+```
+
+## Accessibility
+
+### Keyboard Navigation
+- All interactive elements should be keyboard accessible
+- Use `tabIndex` appropriately
+- Support Escape to close modals
+
+### ARIA Labels
+```typescript
+<button
+  aria-label="Close modal"
+  onClick={onClose}
+>
+  ×
+</button>
+```
+
+### Focus Management
+```typescript
+useEffect(() => {
+  if (isOpen) {
+    inputRef.current?.focus();
+  }
+}, [isOpen]);
+```
+
+## Common Patterns to Avoid
+
+### ❌ Don't Mutate State
+```typescript
+// Bad
+objects.push(newObject);
+setObjects(objects);
+
+// Good
+setObjects([...objects, newObject]);
+```
+
+### ❌ Don't Forget Keys in Lists
+```typescript
+// Bad
+{items.map(item => <Item {...item} />)}
+
+// Good
+{items.map(item => <Item key={item.id} {...item} />)}
+```
+
+### ❌ Don't Use Index as Key
+```typescript
+// Bad
+{items.map((item, index) => <Item key={index} {...item} />)}
+
+// Good (if items have unique IDs)
+{items.map(item => <Item key={item.id} {...item} />)}
+```
+
+### ❌ Don't Call Hooks Conditionally
+```typescript
+// Bad
+if (condition) {
+  const value = useContext(MyContext);
+}
+
+// Good
+const value = useContext(MyContext);
+if (condition) {
+  // Use value
+}
+```

@@ -1,0 +1,856 @@
+---
+alwaysApply: true
+---
+
+Description: Firebase-specific patterns and best practices
+Globs: src/utils/firebase.ts, src/contexts/**/*.tsx, src/config/firebase.ts
+
+# Firebase Patterns & Best Practices
+
+## Database Structure
+
+### Current Schema
+```
+/canvases/{canvasId}
+  - id: string
+  - name: string
+  - ownerId: string
+  - createdAt: timestamp
+  - updatedAt: timestamp
+  - lastOpenedBy: { [userId]: timestamp }
+
+/objects/{canvasId}/{objectId}
+  - id: string
+  - type: 'rectangle'
+  - x: number
+  - y: number
+  - width: number
+  - height: number
+  - fill: string (color)
+  - createdBy: userId
+  - createdAt: timestamp
+  - updatedAt: timestamp
+
+/presence/{canvasId}/{userId}
+  - email: string
+  - color: string (from 5-color palette)
+  - cursor: { x: number, y: number }
+  - isOnline: boolean
+  - lastActive: timestamp
+
+/users/{userId}
+  - email: string
+  - color: string
+  - createdAt: timestamp
+```
+
+## Listener Pattern (CRITICAL)
+
+### Always Clean Up Listeners
+Every Firebase listener MUST have cleanup to prevent memory leaks:
+
+```typescript
+useEffect(() => {
+  const dbRef = ref(database, `objects/${canvasId}`);
+  
+  const unsubscribe = onValue(dbRef, (snapshot) => {
+    const data = snapshot.val();
+    // Update state
+  });
+
+  // CRITICAL: Return cleanup function
+  return () => {
+    unsubscribe();
+  };
+}, [canvasId]);
+```
+
+### Multiple Listeners
+When setting up multiple listeners, clean them all up:
+
+```typescript
+useEffect(() => {
+  const unsubscribe1 = onValue(ref1, callback1);
+  const unsubscribe2 = onValue(ref2, callback2);
+  
+  return () => {
+    unsubscribe1();
+    unsubscribe2();
+  };
+}, [deps]);
+```
+
+## Optimistic Updates Pattern
+
+### Standard Flow
+1. Update local state immediately (optimistic)
+2. Write to Firebase asynchronously
+3. Firebase listener will sync correct state
+4. If write fails, listener reverts to correct state
+
+```typescript
+const createObject = async (objectData) => {
+  const objectId = generateId();
+  const newObject = { ...objectData, id: objectId };
+
+  // 1. Optimistic update
+  setObjects(prev => [...prev, newObject]);
+
+  // 2. Write to Firebase
+  try {
+    await set(ref(database, `objects/${canvasId}/${objectId}`), newObject);
+  } catch (error) {
+    console.error('Error creating object:', error);
+    // 3. Rollback on error (optional - listener will fix it)
+    setObjects(prev => prev.filter(obj => obj.id !== objectId));
+  }
+};
+```
+
+## Writing Data
+
+### Use set() for Full Object
+```typescript
+import { ref, set } from 'firebase/database';
+
+await set(ref(database, `objects/${canvasId}/${objectId}`), {
+  id: objectId,
+  type: 'rectangle',
+  x: 100,
+  y: 100,
+  // ... all fields
+});
+```
+
+### Use update() for Partial Updates
+```typescript
+import { ref, update } from 'firebase/database';
+
+await update(ref(database, `objects/${canvasId}/${objectId}`), {
+  x: newX,
+  y: newY,
+  updatedAt: Date.now(),
+});
+```
+
+### Use remove() for Deletion
+```typescript
+import { ref, remove } from 'firebase/database';
+
+await remove(ref(database, `objects/${canvasId}/${objectId}`));
+```
+
+## Reading Data
+
+### One-Time Read
+```typescript
+import { ref, get } from 'firebase/database';
+
+const snapshot = await get(ref(database, `canvases/${canvasId}`));
+if (snapshot.exists()) {
+  const data = snapshot.val();
+  // Use data
+} else {
+  // Handle not found
+}
+```
+
+### Real-Time Listener
+```typescript
+import { ref, onValue } from 'firebase/database';
+
+const unsubscribe = onValue(ref(database, path), (snapshot) => {
+  const data = snapshot.val();
+  if (data) {
+    // Update state
+  } else {
+    // Handle empty/null
+  }
+});
+
+// Later: cleanup
+unsubscribe();
+```
+
+## Presence System
+
+### Setup Presence with onDisconnect
+```typescript
+import { ref, set, onDisconnect } from 'firebase/database';
+
+const presenceRef = ref(database, `presence/${canvasId}/${userId}`);
+
+// Set user online
+await set(presenceRef, {
+  email: user.email,
+  color: user.color,
+  isOnline: true,
+  lastActive: Date.now(),
+});
+
+// Handle disconnect
+onDisconnect(presenceRef).set({
+  email: user.email,
+  color: user.color,
+  isOnline: false,
+  lastActive: Date.now(),
+});
+```
+
+### Cancel onDisconnect
+```typescript
+const presenceRef = ref(database, `presence/${canvasId}/${userId}`);
+onDisconnect(presenceRef).cancel();
+```
+
+## Throttling & Debouncing
+
+### Cursor Position (Throttle)
+Use setTimeout with trailing edge (last update is sent):
+
+```typescript
+let throttleTimer: NodeJS.Timeout | null = null;
+
+const updateCursor = (position: { x: number; y: number }) => {
+  if (throttleTimer) {
+    clearTimeout(throttleTimer);
+  }
+  
+  throttleTimer = setTimeout(() => {
+    // Write to Firebase
+    set(ref(database, `presence/${canvasId}/${userId}/cursor`), position);
+    throttleTimer = null;
+  }, 50); // 50ms = 20 updates/second
+};
+```
+
+### Search Input (Debounce)
+Use setTimeout with full debounce (wait for pause):
+
+```typescript
+let debounceTimer: NodeJS.Timeout | null = null;
+
+const handleSearch = (query: string) => {
+  setSearchQuery(query); // Update UI immediately
+  
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
+  }
+  
+  debounceTimer = setTimeout(() => {
+    // Execute search
+    performSearch(query);
+    debounceTimer = null;
+  }, 300); // 300ms pause required
+};
+```
+
+## Security Rules
+
+### Read Rules
+```json
+{
+  "objects": {
+    "$canvasId": {
+      ".read": "auth != null"
+    }
+  }
+}
+```
+
+### Write Rules - Owner Only
+```json
+{
+  "canvases": {
+    "$canvasId": {
+      ".write": "data.child('ownerId').val() === auth.uid || !data.exists()"
+    }
+  }
+}
+```
+
+### Write Rules - User-Specific
+```json
+{
+  "presence": {
+    "$canvasId": {
+      "$uid": {
+        ".write": "$uid === auth.uid"
+      }
+    }
+  }
+}
+```
+
+## Error Handling
+
+### Network Errors
+```typescript
+try {
+  await set(ref(database, path), data);
+} catch (error) {
+  console.error('Firebase write failed:', error);
+  // Show toast notification
+  showToast('Failed to save changes', 'error');
+  // Listener will sync correct state
+}
+```
+
+### Permission Errors
+```typescript
+try {
+  await set(ref(database, path), data);
+} catch (error) {
+  if (error.code === 'PERMISSION_DENIED') {
+    // User doesn't have permission
+    showToast('You do not have permission to edit this canvas', 'error');
+  }
+}
+```
+
+## Common Mistakes to Avoid
+
+### ❌ Forgetting Listener Cleanup
+```typescript
+useEffect(() => {
+  onValue(ref(database, path), callback);
+  // MISSING: return cleanup function
+}, []);
+```
+
+### ✅ Correct Listener Cleanup
+```typescript
+useEffect(() => {
+  const unsubscribe = onValue(ref(database, path), callback);
+  return () => unsubscribe();
+}, []);
+```
+
+### ❌ Not Handling Null Data
+```typescript
+onValue(ref(database, path), (snapshot) => {
+  const data = snapshot.val();
+  setObjects(Object.entries(data)); // CRASHES if data is null
+});
+```
+
+### ✅ Handle Null/Empty Data
+```typescript
+onValue(ref(database, path), (snapshot) => {
+  const data = snapshot.val();
+  if (data) {
+    setObjects(Object.entries(data));
+  } else {
+    setObjects([]);
+  }
+});
+```
+
+### ❌ Stale Closure in Listener
+```typescript
+const [count, setCount] = useState(0);
+
+useEffect(() => {
+  onValue(ref, () => {
+    console.log(count); // Will always log 0 (stale closure)
+  });
+}, []); // count not in deps
+```
+
+### ✅ Use Functional Updates
+```typescript
+const [count, setCount] = useState(0);
+
+useEffect(() => {
+  onValue(ref, () => {
+    setCount(prev => prev + 1); // Always uses latest value
+  });
+}, []); // No count in deps needed
+```
+
+## Canvas Isolation
+
+### Always Include Canvas ID
+```typescript
+// ✅ Good: Canvas-specific path
+const objectsRef = ref(database, `objects/${canvasId}`);
+
+// ❌ Bad: Global objects path (no isolation)
+const objectsRef = ref(database, `objects`);
+```
+
+### Update Context Providers
+When canvas ID changes, reinitialize listeners:
+
+```typescript
+useEffect(() => {
+  // Setup listener for current canvasId
+  const unsubscribe = onValue(
+    ref(database, `objects/${canvasId}`),
+    callback
+  );
+  
+  return () => unsubscribe();
+}, [canvasId]); // Re-run when canvasId changes
+```
+
+## Testing Firebase Code
+
+### Mock Firebase Functions
+```typescript
+vi.mock('firebase/database', () => ({
+  ref: vi.fn(),
+  set: vi.fn(),
+  get: vi.fn(),
+  onValue: vi.fn(),
+  // ... other functions
+}));
+```
+
+### Test Optimistic Updates
+```typescript
+it('should update local state immediately', () => {
+  const { result } = renderHook(() => useCanvas());
+  
+  act(() => {
+    result.current.createObject(mockData);
+  });
+  
+  // Local state updated before Firebase write
+  expect(result.current.objects).toContainEqual(mockData);
+});
+```
+
+## Performance Tips
+
+1. **Limit listener scope**: Only listen to data you need
+2. **Use indexOn in rules**: For queries (if using queries)
+3. **Batch writes**: Group related updates with `update()`
+4. **Throttle rapid updates**: Cursor position, drag events
+5. **Clean up listeners**: Prevent memory leaks and redundant updates
+Description: Firebase-specific patterns and best practices
+Globs: src/utils/firebase.ts, src/contexts/**/*.tsx, src/config/firebase.ts
+
+# Firebase Patterns & Best Practices
+
+## Database Structure
+
+### Current Schema
+```
+/canvases/{canvasId}
+  - id: string
+  - name: string
+  - ownerId: string
+  - createdAt: timestamp
+  - updatedAt: timestamp
+  - lastOpenedBy: { [userId]: timestamp }
+
+/objects/{canvasId}/{objectId}
+  - id: string
+  - type: 'rectangle'
+  - x: number
+  - y: number
+  - width: number
+  - height: number
+  - fill: string (color)
+  - createdBy: userId
+  - createdAt: timestamp
+  - updatedAt: timestamp
+
+/presence/{canvasId}/{userId}
+  - email: string
+  - color: string (from 5-color palette)
+  - cursor: { x: number, y: number }
+  - isOnline: boolean
+  - lastActive: timestamp
+
+/users/{userId}
+  - email: string
+  - color: string
+  - createdAt: timestamp
+```
+
+## Listener Pattern (CRITICAL)
+
+### Always Clean Up Listeners
+Every Firebase listener MUST have cleanup to prevent memory leaks:
+
+```typescript
+useEffect(() => {
+  const dbRef = ref(database, `objects/${canvasId}`);
+  
+  const unsubscribe = onValue(dbRef, (snapshot) => {
+    const data = snapshot.val();
+    // Update state
+  });
+
+  // CRITICAL: Return cleanup function
+  return () => {
+    unsubscribe();
+  };
+}, [canvasId]);
+```
+
+### Multiple Listeners
+When setting up multiple listeners, clean them all up:
+
+```typescript
+useEffect(() => {
+  const unsubscribe1 = onValue(ref1, callback1);
+  const unsubscribe2 = onValue(ref2, callback2);
+  
+  return () => {
+    unsubscribe1();
+    unsubscribe2();
+  };
+}, [deps]);
+```
+
+## Optimistic Updates Pattern
+
+### Standard Flow
+1. Update local state immediately (optimistic)
+2. Write to Firebase asynchronously
+3. Firebase listener will sync correct state
+4. If write fails, listener reverts to correct state
+
+```typescript
+const createObject = async (objectData) => {
+  const objectId = generateId();
+  const newObject = { ...objectData, id: objectId };
+
+  // 1. Optimistic update
+  setObjects(prev => [...prev, newObject]);
+
+  // 2. Write to Firebase
+  try {
+    await set(ref(database, `objects/${canvasId}/${objectId}`), newObject);
+  } catch (error) {
+    console.error('Error creating object:', error);
+    // 3. Rollback on error (optional - listener will fix it)
+    setObjects(prev => prev.filter(obj => obj.id !== objectId));
+  }
+};
+```
+
+## Writing Data
+
+### Use set() for Full Object
+```typescript
+import { ref, set } from 'firebase/database';
+
+await set(ref(database, `objects/${canvasId}/${objectId}`), {
+  id: objectId,
+  type: 'rectangle',
+  x: 100,
+  y: 100,
+  // ... all fields
+});
+```
+
+### Use update() for Partial Updates
+```typescript
+import { ref, update } from 'firebase/database';
+
+await update(ref(database, `objects/${canvasId}/${objectId}`), {
+  x: newX,
+  y: newY,
+  updatedAt: Date.now(),
+});
+```
+
+### Use remove() for Deletion
+```typescript
+import { ref, remove } from 'firebase/database';
+
+await remove(ref(database, `objects/${canvasId}/${objectId}`));
+```
+
+## Reading Data
+
+### One-Time Read
+```typescript
+import { ref, get } from 'firebase/database';
+
+const snapshot = await get(ref(database, `canvases/${canvasId}`));
+if (snapshot.exists()) {
+  const data = snapshot.val();
+  // Use data
+} else {
+  // Handle not found
+}
+```
+
+### Real-Time Listener
+```typescript
+import { ref, onValue } from 'firebase/database';
+
+const unsubscribe = onValue(ref(database, path), (snapshot) => {
+  const data = snapshot.val();
+  if (data) {
+    // Update state
+  } else {
+    // Handle empty/null
+  }
+});
+
+// Later: cleanup
+unsubscribe();
+```
+
+## Presence System
+
+### Setup Presence with onDisconnect
+```typescript
+import { ref, set, onDisconnect } from 'firebase/database';
+
+const presenceRef = ref(database, `presence/${canvasId}/${userId}`);
+
+// Set user online
+await set(presenceRef, {
+  email: user.email,
+  color: user.color,
+  isOnline: true,
+  lastActive: Date.now(),
+});
+
+// Handle disconnect
+onDisconnect(presenceRef).set({
+  email: user.email,
+  color: user.color,
+  isOnline: false,
+  lastActive: Date.now(),
+});
+```
+
+### Cancel onDisconnect
+```typescript
+const presenceRef = ref(database, `presence/${canvasId}/${userId}`);
+onDisconnect(presenceRef).cancel();
+```
+
+## Throttling & Debouncing
+
+### Cursor Position (Throttle)
+Use setTimeout with trailing edge (last update is sent):
+
+```typescript
+let throttleTimer: NodeJS.Timeout | null = null;
+
+const updateCursor = (position: { x: number; y: number }) => {
+  if (throttleTimer) {
+    clearTimeout(throttleTimer);
+  }
+  
+  throttleTimer = setTimeout(() => {
+    // Write to Firebase
+    set(ref(database, `presence/${canvasId}/${userId}/cursor`), position);
+    throttleTimer = null;
+  }, 50); // 50ms = 20 updates/second
+};
+```
+
+### Search Input (Debounce)
+Use setTimeout with full debounce (wait for pause):
+
+```typescript
+let debounceTimer: NodeJS.Timeout | null = null;
+
+const handleSearch = (query: string) => {
+  setSearchQuery(query); // Update UI immediately
+  
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
+  }
+  
+  debounceTimer = setTimeout(() => {
+    // Execute search
+    performSearch(query);
+    debounceTimer = null;
+  }, 300); // 300ms pause required
+};
+```
+
+## Security Rules
+
+### Read Rules
+```json
+{
+  "objects": {
+    "$canvasId": {
+      ".read": "auth != null"
+    }
+  }
+}
+```
+
+### Write Rules - Owner Only
+```json
+{
+  "canvases": {
+    "$canvasId": {
+      ".write": "data.child('ownerId').val() === auth.uid || !data.exists()"
+    }
+  }
+}
+```
+
+### Write Rules - User-Specific
+```json
+{
+  "presence": {
+    "$canvasId": {
+      "$uid": {
+        ".write": "$uid === auth.uid"
+      }
+    }
+  }
+}
+```
+
+## Error Handling
+
+### Network Errors
+```typescript
+try {
+  await set(ref(database, path), data);
+} catch (error) {
+  console.error('Firebase write failed:', error);
+  // Show toast notification
+  showToast('Failed to save changes', 'error');
+  // Listener will sync correct state
+}
+```
+
+### Permission Errors
+```typescript
+try {
+  await set(ref(database, path), data);
+} catch (error) {
+  if (error.code === 'PERMISSION_DENIED') {
+    // User doesn't have permission
+    showToast('You do not have permission to edit this canvas', 'error');
+  }
+}
+```
+
+## Common Mistakes to Avoid
+
+### ❌ Forgetting Listener Cleanup
+```typescript
+useEffect(() => {
+  onValue(ref(database, path), callback);
+  // MISSING: return cleanup function
+}, []);
+```
+
+### ✅ Correct Listener Cleanup
+```typescript
+useEffect(() => {
+  const unsubscribe = onValue(ref(database, path), callback);
+  return () => unsubscribe();
+}, []);
+```
+
+### ❌ Not Handling Null Data
+```typescript
+onValue(ref(database, path), (snapshot) => {
+  const data = snapshot.val();
+  setObjects(Object.entries(data)); // CRASHES if data is null
+});
+```
+
+### ✅ Handle Null/Empty Data
+```typescript
+onValue(ref(database, path), (snapshot) => {
+  const data = snapshot.val();
+  if (data) {
+    setObjects(Object.entries(data));
+  } else {
+    setObjects([]);
+  }
+});
+```
+
+### ❌ Stale Closure in Listener
+```typescript
+const [count, setCount] = useState(0);
+
+useEffect(() => {
+  onValue(ref, () => {
+    console.log(count); // Will always log 0 (stale closure)
+  });
+}, []); // count not in deps
+```
+
+### ✅ Use Functional Updates
+```typescript
+const [count, setCount] = useState(0);
+
+useEffect(() => {
+  onValue(ref, () => {
+    setCount(prev => prev + 1); // Always uses latest value
+  });
+}, []); // No count in deps needed
+```
+
+## Canvas Isolation
+
+### Always Include Canvas ID
+```typescript
+// ✅ Good: Canvas-specific path
+const objectsRef = ref(database, `objects/${canvasId}`);
+
+// ❌ Bad: Global objects path (no isolation)
+const objectsRef = ref(database, `objects`);
+```
+
+### Update Context Providers
+When canvas ID changes, reinitialize listeners:
+
+```typescript
+useEffect(() => {
+  // Setup listener for current canvasId
+  const unsubscribe = onValue(
+    ref(database, `objects/${canvasId}`),
+    callback
+  );
+  
+  return () => unsubscribe();
+}, [canvasId]); // Re-run when canvasId changes
+```
+
+## Testing Firebase Code
+
+### Mock Firebase Functions
+```typescript
+vi.mock('firebase/database', () => ({
+  ref: vi.fn(),
+  set: vi.fn(),
+  get: vi.fn(),
+  onValue: vi.fn(),
+  // ... other functions
+}));
+```
+
+### Test Optimistic Updates
+```typescript
+it('should update local state immediately', () => {
+  const { result } = renderHook(() => useCanvas());
+  
+  act(() => {
+    result.current.createObject(mockData);
+  });
+  
+  // Local state updated before Firebase write
+  expect(result.current.objects).toContainEqual(mockData);
+});
+```
+
+## Performance Tips
+
+1. **Limit listener scope**: Only listen to data you need
+2. **Use indexOn in rules**: For queries (if using queries)
+3. **Batch writes**: Group related updates with `update()`
+4. **Throttle rapid updates**: Cursor position, drag events
+5. **Clean up listeners**: Prevent memory leaks and redundant updates
