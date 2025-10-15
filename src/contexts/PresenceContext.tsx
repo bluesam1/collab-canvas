@@ -10,9 +10,10 @@ export const PresenceContext = createContext<PresenceContextType | undefined>(un
 
 interface PresenceContextProviderProps {
   children: ReactNode;
+  canvasId: string;
 }
 
-export const PresenceContextProvider = ({ children }: PresenceContextProviderProps) => {
+export const PresenceContextProvider = ({ children, canvasId }: PresenceContextProviderProps) => {
   const authContext = useContext(UserContext);
   const [onlineUsers, setOnlineUsers] = useState<Map<string, PresenceUser>>(new Map());
   const [cursors, setCursors] = useState<Map<string, CursorPosition>>(new Map());
@@ -30,7 +31,7 @@ export const PresenceContextProvider = ({ children }: PresenceContextProviderPro
   useEffect(() => {
     const CURSOR_TIMEOUT = 30000; // 30 seconds
     
-    const unsubscribe = subscribeToPresence((presenceData) => {
+    const unsubscribe = subscribeToPresence(canvasId, (presenceData) => {
       const now = Date.now();
       const newOnlineUsers = new Map<string, PresenceUser>();
       const newCursors = new Map<string, CursorPosition>();
@@ -124,7 +125,7 @@ export const PresenceContextProvider = ({ children }: PresenceContextProviderPro
         clearTimeout(updateTimeoutRef.current);
       }
     };
-  }, [authContext?.user?.uid]);
+  }, [authContext?.user?.uid, canvasId]);
 
   // Set user presence when they log in
   useEffect(() => {
@@ -134,8 +135,8 @@ export const PresenceContextProvider = ({ children }: PresenceContextProviderPro
 
     const user = authContext.user;
     
-    // Set user presence in Firebase
-    setUserPresence(user.uid, {
+    // Set user presence in Firebase for this canvas
+    setUserPresence(canvasId, user.uid, {
       email: user.email || 'Unknown',
       color: user.color || '#3B82F6',
     }).catch((error) => {
@@ -145,7 +146,7 @@ export const PresenceContextProvider = ({ children }: PresenceContextProviderPro
     // Update lastActive timestamp periodically (every 30 seconds)
     const updateInterval = setInterval(() => {
       if (authContext?.user) {
-        updateUserPresence(authContext.user.uid, {
+        updateUserPresence(canvasId, authContext.user.uid, {
           // Just updates the lastActive timestamp
         }).catch((error) => {
           console.debug('Error updating presence:', error);
@@ -179,7 +180,7 @@ export const PresenceContextProvider = ({ children }: PresenceContextProviderPro
     // If enough time has passed, update immediately
     if (timeSinceLastUpdate >= THROTTLE_INTERVAL) {
       lastUpdateTimeRef.current = now;
-      updateCursorFirebase(authContext.user.uid, {
+      updateCursorFirebase(canvasId, authContext.user.uid, {
         x: position.x,
         y: position.y,
         email: authContext.user.email || 'Unknown',
@@ -194,7 +195,7 @@ export const PresenceContextProvider = ({ children }: PresenceContextProviderPro
         if (pendingUpdateRef.current && authContext?.user) {
           lastUpdateTimeRef.current = Date.now();
           const color = onlineUsers.get(authContext.user.uid)?.color || authContext.user.color || '#3B82F6';
-          updateCursorFirebase(authContext.user.uid, {
+          updateCursorFirebase(canvasId, authContext.user.uid, {
             x: pendingUpdateRef.current.x,
             y: pendingUpdateRef.current.y,
             email: authContext.user.email || 'Unknown',

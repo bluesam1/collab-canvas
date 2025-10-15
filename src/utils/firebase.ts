@@ -60,8 +60,8 @@ export const retryOperation = async <T>(
 };
 
 // Object operations
-export const createObject = async (objectData: Record<string, unknown>) => {
-  const objectsRef = ref(database, 'objects');
+export const createObject = async (canvasId: string, objectData: Record<string, unknown>) => {
+  const objectsRef = ref(database, `objects/${canvasId}`);
   const newObjectRef = push(objectsRef);
   
   try {
@@ -77,8 +77,8 @@ export const createObject = async (objectData: Record<string, unknown>) => {
   }
 };
 
-export const updateObject = async (objectId: string, updates: Record<string, unknown>) => {
-  const objectRef = ref(database, `objects/${objectId}`);
+export const updateObject = async (canvasId: string, objectId: string, updates: Record<string, unknown>) => {
+  const objectRef = ref(database, `objects/${canvasId}/${objectId}`);
   
   try {
     await update(objectRef, {
@@ -91,8 +91,8 @@ export const updateObject = async (objectId: string, updates: Record<string, unk
   }
 };
 
-export const deleteObject = async (objectId: string) => {
-  const objectRef = ref(database, `objects/${objectId}`);
+export const deleteObject = async (canvasId: string, objectId: string) => {
+  const objectRef = ref(database, `objects/${canvasId}/${objectId}`);
   
   try {
     await remove(objectRef);
@@ -102,8 +102,8 @@ export const deleteObject = async (objectId: string) => {
   }
 };
 
-export const getObjects = async () => {
-  const objectsRef = ref(database, 'objects');
+export const getObjects = async (canvasId: string) => {
+  const objectsRef = ref(database, `objects/${canvasId}`);
   
   try {
     const snapshot = await get(objectsRef);
@@ -114,8 +114,8 @@ export const getObjects = async () => {
   }
 };
 
-export const subscribeToObjects = (callback: (objects: Record<string, unknown>) => void) => {
-  const objectsRef = ref(database, 'objects');
+export const subscribeToObjects = (canvasId: string, callback: (objects: Record<string, unknown>) => void) => {
+  const objectsRef = ref(database, `objects/${canvasId}`);
   
   return onValue(objectsRef, (snapshot) => {
     const data = snapshot.val() || {};
@@ -126,8 +126,8 @@ export const subscribeToObjects = (callback: (objects: Record<string, unknown>) 
 };
 
 // Presence operations
-export const setUserPresence = async (userId: string, userData: Record<string, unknown>) => {
-  const presenceRef = ref(database, `presence/${userId}`);
+export const setUserPresence = async (canvasId: string, userId: string, userData: Record<string, unknown>) => {
+  const presenceRef = ref(database, `presence/${canvasId}/${userId}`);
   
   try {
     await set(presenceRef, {
@@ -148,8 +148,8 @@ export const setUserPresence = async (userId: string, userData: Record<string, u
   }
 };
 
-export const updateUserPresence = async (userId: string, updates: Record<string, unknown>) => {
-  const presenceRef = ref(database, `presence/${userId}`);
+export const updateUserPresence = async (canvasId: string, userId: string, updates: Record<string, unknown>) => {
+  const presenceRef = ref(database, `presence/${canvasId}/${userId}`);
   
   try {
     await update(presenceRef, {
@@ -162,8 +162,8 @@ export const updateUserPresence = async (userId: string, updates: Record<string,
   }
 };
 
-export const subscribeToPresence = (callback: (presence: Record<string, unknown>) => void) => {
-  const presenceRef = ref(database, 'presence');
+export const subscribeToPresence = (canvasId: string, callback: (presence: Record<string, unknown>) => void) => {
+  const presenceRef = ref(database, `presence/${canvasId}`);
   
   return onValue(presenceRef, (snapshot) => {
     const data = snapshot.val() || {};
@@ -174,8 +174,8 @@ export const subscribeToPresence = (callback: (presence: Record<string, unknown>
 };
 
 // Cursor operations (with throttling handled by caller)
-export const updateCursor = async (userId: string, cursorData: { x: number; y: number; email: string; color?: string }) => {
-  const cursorRef = ref(database, `presence/${userId}/cursor`);
+export const updateCursor = async (canvasId: string, userId: string, cursorData: { x: number; y: number; email: string; color?: string }) => {
+  const cursorRef = ref(database, `presence/${canvasId}/${userId}/cursor`);
   
   try {
     await set(cursorRef, {
@@ -188,8 +188,8 @@ export const updateCursor = async (userId: string, cursorData: { x: number; y: n
   }
 };
 
-export const clearCursor = async (userId: string) => {
-  const cursorRef = ref(database, `presence/${userId}/cursor`);
+export const clearCursor = async (canvasId: string, userId: string) => {
+  const cursorRef = ref(database, `presence/${canvasId}/${userId}/cursor`);
   
   try {
     await remove(cursorRef);

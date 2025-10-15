@@ -2,16 +2,33 @@
   "rules": {
     ".read": "auth != null",
     ".write": "auth != null",
-    "objects": {
-      "$objectId": {
+    "canvases": {
+      "$canvasId": {
         ".read": "auth != null",
-        ".write": "auth != null"
+        ".write": "auth != null && (!data.exists() || data.child('ownerId').val() == auth.uid || !data.hasChild('ownerId'))",
+        "lastOpenedBy": {
+          "$userId": {
+            ".read": "auth != null",
+            ".write": "auth != null"
+          }
+        }
+      }
+    },
+    "objects": {
+      "$canvasId": {
+        "$objectId": {
+          ".read": "auth != null",
+          ".write": "auth != null",
+          ".validate": "newData.hasChildren(['id', 'x', 'y', 'width', 'height', 'fill', 'createdBy', 'createdAt', 'updatedAt'])"
+        }
       }
     },
     "presence": {
-      "$userId": {
-        ".read": "auth != null",
-        ".write": "$userId === auth.uid"
+      "$canvasId": {
+        "$userId": {
+          ".read": "auth != null",
+          ".write": "$userId === auth.uid"
+        }
       }
     },
     "users": {

@@ -87,48 +87,46 @@ export function Canvas({ selectedColor }: CanvasProps) {
     // If clicking on empty space (stage background)
     const clickedOnEmpty = e.target === e.target.getStage();
 
-    if (clickedOnEmpty) {
-      // Deselect on empty click
-      selectObject(null);
-
-      // Handle based on current mode
-      if (e.evt.button === 0) {  // Left mouse button
-        const stage = stageRef.current;
-        if (stage) {
-          const pos = stage.getPointerPosition();
-          if (pos) {
-            if (mode === 'rectangle') {
-              // Rectangle mode: Start creating rectangle
-              const worldPos = {
-                x: (pos.x - stage.x()) / stage.scaleX(),
-                y: (pos.y - stage.y()) / stage.scaleY(),
-              };
-              setNewRectStart(worldPos);
-              setIsCreating(true);
-            } else if (mode === 'pan') {
-              // Pan mode: Start panning
-              setIsPanning(true);
-              const stagePos = stage.position();
-              setDragStart({
-                x: e.evt.clientX - stagePos.x,
-                y: e.evt.clientY - stagePos.y,
-              });
-            }
+    // Handle based on current mode
+    if (e.evt.button === 0) {  // Left mouse button
+      const stage = stageRef.current;
+      if (stage) {
+        const pos = stage.getPointerPosition();
+        if (pos) {
+          if (mode === 'rectangle') {
+            // Rectangle mode: Start creating rectangle (works even over existing shapes)
+            const worldPos = {
+              x: (pos.x - stage.x()) / stage.scaleX(),
+              y: (pos.y - stage.y()) / stage.scaleY(),
+            };
+            setNewRectStart(worldPos);
+            setIsCreating(true);
+            // Deselect any selected object
+            selectObject(null);
+          } else if (mode === 'pan' && clickedOnEmpty) {
+            // Pan mode: Start panning only on empty space
+            setIsPanning(true);
+            const stagePos = stage.position();
+            setDragStart({
+              x: e.evt.clientX - stagePos.x,
+              y: e.evt.clientY - stagePos.y,
+            });
+          } else if (clickedOnEmpty) {
+            // Deselect on empty click in select mode
+            selectObject(null);
           }
         }
       }
-    } else {
+    } else if (e.evt.button === 1) {
       // Middle button always pans regardless of mode
-      if (e.evt.button === 1) {
-        setIsPanning(true);
-        const stage = stageRef.current;
-        if (stage) {
-          const pos = stage.position();
-          setDragStart({
-            x: e.evt.clientX - pos.x,
-            y: e.evt.clientY - pos.y,
-          });
-        }
+      setIsPanning(true);
+      const stage = stageRef.current;
+      if (stage) {
+        const pos = stage.position();
+        setDragStart({
+          x: e.evt.clientX - pos.x,
+          y: e.evt.clientY - pos.y,
+        });
       }
     }
   };
@@ -308,6 +306,11 @@ export function Canvas({ selectedColor }: CanvasProps) {
     selectObject(id);
   };
 
+  // Handle rectangle drag move
+  const handleRectangleDragMove = (x: number, y: number) => {
+    updateCursor({ x, y });
+  };
+
   // Handle rectangle drag end
   const handleRectangleDragEnd = (id: string, x: number, y: number) => {
     updateObject(id, { x, y });
@@ -386,7 +389,9 @@ export function Canvas({ selectedColor }: CanvasProps) {
               rectangle={rect}
               isSelected={selectedIds.includes(rect.id)}
               onClick={handleRectangleClick}
+              onDragMove={handleRectangleDragMove}
               onDragEnd={handleRectangleDragEnd}
+              mode={mode}
             />
           ))}
 
