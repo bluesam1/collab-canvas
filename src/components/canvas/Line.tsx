@@ -1,4 +1,4 @@
-import { useRef, useEffect, memo, useState } from 'react';
+import { useRef, memo, useState } from 'react';
 import { Line as KonvaLine, Circle } from 'react-konva';
 import Konva from 'konva';
 import type { Line as LineType, CanvasMode } from '../../types';
