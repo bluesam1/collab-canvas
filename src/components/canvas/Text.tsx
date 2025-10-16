@@ -47,14 +47,18 @@ export const Text = memo(function Text({
   }, [isSelected, mode, text.text]);
 
   const handleClick = (e: Konva.KonvaEventObject<MouseEvent>) => {
-    e.cancelBubble = true;
-    
-    if (isSelected) {
-      // If already selected, trigger the modal edit (this will be handled by Canvas component)
-      onClick(text.id);
-    } else {
-      // If not selected, select the text object
-      onClick(text.id);
+    // Only allow selection in pan mode
+    // In creation modes, let the event bubble to the stage so users can draw over existing shapes
+    if (mode === 'pan') {
+      e.cancelBubble = true;
+      
+      if (isSelected) {
+        // If already selected, trigger the modal edit (this will be handled by Canvas component)
+        onClick(text.id);
+      } else {
+        // If not selected, select the text object
+        onClick(text.id);
+      }
     }
   };
 

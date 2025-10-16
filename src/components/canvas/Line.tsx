@@ -33,7 +33,9 @@ export const Line = memo(function Line({
   }, [isSelected]);
 
   const handleClick = (e: Konva.KonvaEventObject<MouseEvent>) => {
-    if (mode !== 'line') {
+    // Only allow selection in pan mode
+    // In creation modes, let the event bubble to the stage so users can draw over existing shapes
+    if (mode === 'pan') {
       e.cancelBubble = true;
       onClick(line.id);
     }

@@ -26,9 +26,9 @@ export function Rectangle({ rectangle, isSelected, onClick, onDragEnd, onDragMov
   }, [isSelected]);
 
   const handleClick = (e: Konva.KonvaEventObject<MouseEvent>) => {
-    // In rectangle creation mode, let the event bubble to the stage
-    // so the user can draw over existing shapes
-    if (mode !== 'rectangle') {
+    // Only allow selection in pan mode
+    // In creation modes, let the event bubble to the stage so users can draw over existing shapes
+    if (mode === 'pan') {
       e.cancelBubble = true; // Prevent event from bubbling to stage
       onClick(rectangle.id);
     }

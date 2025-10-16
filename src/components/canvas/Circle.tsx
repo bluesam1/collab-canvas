@@ -26,9 +26,9 @@ export const Circle = memo(function Circle({ circle, isSelected, onClick, onDrag
   }, [isSelected]);
 
   const handleClick = (e: Konva.KonvaEventObject<MouseEvent>) => {
-    // In circle creation mode, let the event bubble to the stage
-    // so the user can draw over existing shapes
-    if (mode !== 'circle') {
+    // Only allow selection in pan mode
+    // In creation modes, let the event bubble to the stage so users can draw over existing shapes
+    if (mode === 'pan') {
       e.cancelBubble = true; // Prevent event from bubbling to stage
       onClick(circle.id);
     }

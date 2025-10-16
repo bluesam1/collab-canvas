@@ -19,7 +19,7 @@
         "$objectId": {
           ".read": "auth != null",
           ".write": "auth != null",
-          ".validate": "newData.hasChildren(['id', 'type', 'createdBy', 'createdAt', 'updatedAt']) && (newData.child('type').val() == 'rectangle' || newData.child('type').val() == 'circle' || newData.child('type').val() == 'line' || newData.child('type').val() == 'text')",
+          ".validate": "(!data.exists() && newData.hasChildren(['id', 'type', 'createdBy', 'createdAt', 'updatedAt'])) || (data.exists() && newData.hasChildren(['id', 'type', 'createdBy', 'createdAt'])) && (newData.child('type').val() == 'rectangle' || newData.child('type').val() == 'circle' || newData.child('type').val() == 'line' || newData.child('type').val() == 'text')",
           "id": { ".validate": "newData.isString()" },
           "type": { ".validate": "newData.isString() && (newData.val() == 'rectangle' || newData.val() == 'circle' || newData.val() == 'line' || newData.val() == 'text')" },
           "createdBy": { ".validate": "newData.isString()" },
