@@ -13,6 +13,7 @@ function TestCanvasComponent() {
 
   const handleCreateRect = () => {
     createObject({
+      type: 'rectangle',
       x: 100,
       y: 100,
       width: 200,
@@ -24,6 +25,7 @@ function TestCanvasComponent() {
 
   const handleCreateSmallRect = () => {
     createObject({
+      type: 'rectangle',
       x: 50,
       y: 50,
       width: 5,
@@ -35,6 +37,7 @@ function TestCanvasComponent() {
 
   const handleCreateLargeRect = () => {
     createObject({
+      type: 'rectangle',
       x: 200,
       y: 200,
       width: 3000,
@@ -949,6 +952,7 @@ describe('Canvas Mode Switching', () => {
 
       const handleCreate = () => {
         createObject({
+          type: 'rectangle',
           x: 100,
           y: 100,
           width: 200,

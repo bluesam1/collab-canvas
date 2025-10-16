@@ -1,10 +1,10 @@
-import { useRef, useEffect, useState } from 'react';
-import { Rect, Transformer } from 'react-konva';
+import { useRef, useEffect, memo, useState } from 'react';
+import { Circle as KonvaCircle, Transformer } from 'react-konva';
 import Konva from 'konva';
-import type { Rectangle as RectangleType, CanvasMode } from '../../types';
+import type { Circle as CircleType, CanvasMode } from '../../types';
 
-interface RectangleProps {
-  rectangle: RectangleType;
+interface CircleProps {
+  circle: CircleType;
   isSelected: boolean;
   onClick: (id: string) => void;
   onDragEnd: (id: string, x: number, y: number) => void;
@@ -12,25 +12,25 @@ interface RectangleProps {
   mode: CanvasMode;
 }
 
-export function Rectangle({ rectangle, isSelected, onClick, onDragEnd, onDragMove, mode }: RectangleProps) {
-  const rectRef = useRef<Konva.Rect>(null);
+export const Circle = memo(function Circle({ circle, isSelected, onClick, onDragMove, onDragEnd, mode }: CircleProps) {
+  const circleRef = useRef<Konva.Circle>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   const [isHovered, setIsHovered] = useState(false);
 
-  // Attach transformer to selected rectangle
+  // Attach transformer to selected circle
   useEffect(() => {
-    if (isSelected && rectRef.current && transformerRef.current) {
-      transformerRef.current.nodes([rectRef.current]);
+    if (isSelected && circleRef.current && transformerRef.current) {
+      transformerRef.current.nodes([circleRef.current]);
       transformerRef.current.getLayer()?.batchDraw();
     }
   }, [isSelected]);
 
   const handleClick = (e: Konva.KonvaEventObject<MouseEvent>) => {
-    // In rectangle creation mode, let the event bubble to the stage
+    // In circle creation mode, let the event bubble to the stage
     // so the user can draw over existing shapes
-    if (mode !== 'rectangle') {
+    if (mode !== 'circle') {
       e.cancelBubble = true; // Prevent event from bubbling to stage
-      onClick(rectangle.id);
+      onClick(circle.id);
     }
   };
 
@@ -53,7 +53,7 @@ export function Rectangle({ rectangle, isSelected, onClick, onDragEnd, onDragMov
   };
 
   const handleDragEnd = (e: Konva.KonvaEventObject<DragEvent>) => {
-    onDragEnd(rectangle.id, e.target.x(), e.target.y());
+    onDragEnd(circle.id, e.target.x(), e.target.y());
   };
 
   const handleMouseEnter = (e: Konva.KonvaEventObject<MouseEvent>) => {
@@ -82,14 +82,13 @@ export function Rectangle({ rectangle, isSelected, onClick, onDragEnd, onDragMov
 
   return (
     <>
-      <Rect
-        ref={rectRef}
-        id={rectangle.id}
-        x={rectangle.x}
-        y={rectangle.y}
-        width={rectangle.width}
-        height={rectangle.height}
-        fill={rectangle.fill}
+      <KonvaCircle
+        ref={circleRef}
+        id={circle.id}
+        x={circle.centerX}
+        y={circle.centerY}
+        radius={circle.radius}
+        fill={circle.fill}
         stroke={isSelected ? '#000000' : undefined}
         strokeWidth={isSelected ? 2 : 0}
         draggable={isSelected}
@@ -119,5 +118,4 @@ export function Rectangle({ rectangle, isSelected, onClick, onDragEnd, onDragMov
       )}
     </>
   );
-}
-
+});

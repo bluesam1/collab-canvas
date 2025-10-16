@@ -272,22 +272,33 @@ User copies canvas URL
 
 ## Testing Strategy
 
+### Testing Framework & Organization
+- **Framework**: Vitest (not Jest) for Vite-native performance
+- **Location**: All tests in `tests/` directory (NOT alongside components)
+- **Naming**: `tests/[component-name].test.tsx` format
+- **Mocking**: Use `vi.mock()` instead of `jest.mock()`
+- **Assertions**: Use `@testing-library/jest-dom` matchers
+
 ### Unit Tests
 - Context logic (state updates, CRUD operations)
 - Utility functions (colors, Firebase helpers)
 - Component interactions
+- Shape components (Circle, Line, Text)
+- Toolbar and UI components
 
 ### Integration Tests
 - Auth flow (email link, Google)
 - Canvas operations (create, move, delete)
 - Real-time sync (optimistic updates, listener updates)
 - Presence system (join, leave, cursor tracking)
+- Multi-shape type operations
 
 ### Manual Tests
 - Multi-browser collaboration
 - Network disconnection scenarios
 - Performance under load (100+ shapes)
 - Cross-browser compatibility
+- Shape creation and editing workflows
 
 ## Error Handling Strategy
 

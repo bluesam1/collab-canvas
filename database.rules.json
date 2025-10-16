@@ -19,7 +19,32 @@
         "$objectId": {
           ".read": "auth != null",
           ".write": "auth != null",
-          ".validate": "newData.hasChildren(['id', 'x', 'y', 'width', 'height', 'fill', 'createdBy', 'createdAt', 'updatedAt'])"
+          ".validate": "newData.hasChildren(['id', 'type', 'createdBy', 'createdAt', 'updatedAt']) && (newData.child('type').val() == 'rectangle' || newData.child('type').val() == 'circle' || newData.child('type').val() == 'line' || newData.child('type').val() == 'text')",
+          "id": { ".validate": "newData.isString()" },
+          "type": { ".validate": "newData.isString() && (newData.val() == 'rectangle' || newData.val() == 'circle' || newData.val() == 'line' || newData.val() == 'text')" },
+          "createdBy": { ".validate": "newData.isString()" },
+          "createdAt": { ".validate": "newData.isNumber()" },
+          "updatedAt": { ".validate": "newData.isNumber()" },
+          "x": { ".validate": "newData.isNumber()" },
+          "y": { ".validate": "newData.isNumber()" },
+          "width": { ".validate": "newData.isNumber()" },
+          "height": { ".validate": "newData.isNumber()" },
+          "centerX": { ".validate": "newData.isNumber()" },
+          "centerY": { ".validate": "newData.isNumber()" },
+          "radius": { ".validate": "newData.isNumber()" },
+          "x1": { ".validate": "newData.isNumber()" },
+          "y1": { ".validate": "newData.isNumber()" },
+          "x2": { ".validate": "newData.isNumber()" },
+          "y2": { ".validate": "newData.isNumber()" },
+          "text": { ".validate": "newData.isString()" },
+          "fontSize": { ".validate": "newData.isNumber()" },
+          "fill": { ".validate": "newData.isString()" },
+          "stroke": { ".validate": "newData.isString()" },
+          "strokeWidth": { ".validate": "newData.isNumber()" },
+          "bold": { ".validate": "newData.isBoolean()" },
+          "italic": { ".validate": "newData.isBoolean()" },
+          "underline": { ".validate": "newData.isBoolean()" },
+          "$other": { ".validate": false }
         }
       }
     },

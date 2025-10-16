@@ -1,47 +1,50 @@
-import { useRef, useEffect, useState } from 'react';
-import { Rect, Transformer } from 'react-konva';
+import { useRef, useEffect, memo, useState } from 'react';
+import { Line as KonvaLine, Transformer } from 'react-konva';
 import Konva from 'konva';
-import type { Rectangle as RectangleType, CanvasMode } from '../../types';
+import type { Line as LineType, CanvasMode } from '../../types';
 
-interface RectangleProps {
-  rectangle: RectangleType;
+interface LineProps {
+  line: LineType;
   isSelected: boolean;
   onClick: (id: string) => void;
-  onDragEnd: (id: string, x: number, y: number) => void;
+  onDragEnd: (id: string, x1: number, y1: number, x2: number, y2: number) => void;
   onDragMove?: (x: number, y: number) => void;
   mode: CanvasMode;
 }
 
-export function Rectangle({ rectangle, isSelected, onClick, onDragEnd, onDragMove, mode }: RectangleProps) {
-  const rectRef = useRef<Konva.Rect>(null);
+export const Line = memo(function Line({ 
+  line, 
+  isSelected, 
+  onClick, 
+  onDragMove, 
+  onDragEnd, 
+  mode 
+}: LineProps) {
+  const lineRef = useRef<Konva.Line>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   const [isHovered, setIsHovered] = useState(false);
 
-  // Attach transformer to selected rectangle
+  // Attach transformer to selected line
   useEffect(() => {
-    if (isSelected && rectRef.current && transformerRef.current) {
-      transformerRef.current.nodes([rectRef.current]);
+    if (isSelected && lineRef.current && transformerRef.current) {
+      transformerRef.current.nodes([lineRef.current]);
       transformerRef.current.getLayer()?.batchDraw();
     }
   }, [isSelected]);
 
   const handleClick = (e: Konva.KonvaEventObject<MouseEvent>) => {
-    // In rectangle creation mode, let the event bubble to the stage
-    // so the user can draw over existing shapes
-    if (mode !== 'rectangle') {
-      e.cancelBubble = true; // Prevent event from bubbling to stage
-      onClick(rectangle.id);
+    if (mode !== 'line') {
+      e.cancelBubble = true;
+      onClick(line.id);
     }
   };
 
   const handleDragMove = (e: Konva.KonvaEventObject<DragEvent>) => {
     if (onDragMove) {
-      // Get the stage to access pointer position
       const stage = e.target.getStage();
       if (stage) {
         const pointerPos = stage.getPointerPosition();
         if (pointerPos) {
-          // Convert to world coordinates
           const worldPos = {
             x: (pointerPos.x - stage.x()) / stage.scaleX(),
             y: (pointerPos.y - stage.y()) / stage.scaleY(),
@@ -53,7 +56,13 @@ export function Rectangle({ rectangle, isSelected, onClick, onDragEnd, onDragMov
   };
 
   const handleDragEnd = (e: Konva.KonvaEventObject<DragEvent>) => {
-    onDragEnd(rectangle.id, e.target.x(), e.target.y());
+    // For lines, we need to update both start and end points
+    const newX1 = line.x1 + e.target.x();
+    const newY1 = line.y1 + e.target.y();
+    const newX2 = line.x2 + e.target.x();
+    const newY2 = line.y2 + e.target.y();
+    
+    onDragEnd(line.id, newX1, newY1, newX2, newY2);
   };
 
   const handleMouseEnter = (e: Konva.KonvaEventObject<MouseEvent>) => {
@@ -82,16 +91,14 @@ export function Rectangle({ rectangle, isSelected, onClick, onDragEnd, onDragMov
 
   return (
     <>
-      <Rect
-        ref={rectRef}
-        id={rectangle.id}
-        x={rectangle.x}
-        y={rectangle.y}
-        width={rectangle.width}
-        height={rectangle.height}
-        fill={rectangle.fill}
-        stroke={isSelected ? '#000000' : undefined}
-        strokeWidth={isSelected ? 2 : 0}
+      <KonvaLine
+        ref={lineRef}
+        id={line.id}
+        points={[line.x1, line.y1, line.x2, line.y2]}
+        stroke={line.stroke}
+        strokeWidth={line.strokeWidth}
+        lineCap="round"
+        lineJoin="round"
         draggable={isSelected}
         onClick={handleClick}
         onTap={handleClick}
@@ -119,5 +126,4 @@ export function Rectangle({ rectangle, isSelected, onClick, onDragEnd, onDragMov
       )}
     </>
   );
-}
-
+});

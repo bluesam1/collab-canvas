@@ -84,6 +84,7 @@ function TestSyncComponent() {
 
   const handleCreateRect = async () => {
     await createObject({
+      type: 'rectangle',
       x: 100,
       y: 100,
       width: 200,

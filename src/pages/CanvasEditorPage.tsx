@@ -15,13 +15,24 @@ export function CanvasEditorPage() {
   const authContext = useContext(UserContext);
   const { showError, showSuccess } = useToast();
   const { refreshCanvases } = useCanvasList();
-  const [selectedColor, setSelectedColor] = useState('#3B82F6'); // Default blue
+  // Initialize color from localStorage or use default
+  const [selectedColor, setSelectedColor] = useState(() => {
+    const savedColor = localStorage.getItem('collab-canvas-selected-color');
+    return savedColor || '#3B82F6'; // Default blue
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [canvasName, setCanvasName] = useState('');
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState('');
   const [isOwner, setIsOwner] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Handle color change and save to localStorage
+  const handleColorChange = (color: string) => {
+    setSelectedColor(color);
+    localStorage.setItem('collab-canvas-selected-color', color);
+  };
 
   if (!authContext || !authContext.user) {
     return null;
@@ -178,14 +189,6 @@ export function CanvasEditorPage() {
                   )}
                 </h1>
               )}
-              <p className="text-xs text-gray-300">
-                Signed in as <strong>{user.email}</strong>
-                {user.color && (
-                  <span className="inline-flex items-center gap-1 ml-2">
-                    <span className="w-3 h-3 rounded-full" style={{ backgroundColor: user.color }}></span>
-                  </span>
-                )}
-              </p>
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -202,10 +205,16 @@ export function CanvasEditorPage() {
       </header>
 
       {/* Toolbar - positioned in top-left */}
-      <Toolbar selectedColor={selectedColor} onColorChange={setSelectedColor} />
+      <Toolbar 
+        selectedColor={selectedColor} 
+        onColorChange={handleColorChange}
+        showInfo={showInfo}
+        onToggleInfo={() => setShowInfo(!showInfo)}
+        onBackToCanvasList={handleBackToCanvasList}
+      />
 
       {/* Canvas - full screen */}
-      <Canvas selectedColor={selectedColor} />
+      <Canvas selectedColor={selectedColor} showInfo={showInfo} />
     </div>
   );
 }

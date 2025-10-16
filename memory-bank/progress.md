@@ -40,45 +40,58 @@
 - [x] Canvas name clickable to rename (owner only)
 - [x] Full-screen layout (no scrolling)
 
-### ✅ Shape Operations (PR #7, #8)
+### ✅ Shape Operations (PR #7, #8, Additional Shapes)
 - [x] Rectangle creation via click-and-drag
-- [x] Minimum size constraint (10×10px)
-- [x] Maximum size constraint (2000×2000px)
-- [x] Single clicks (no drag) ignored
-- [x] 5-color palette selection
-- [x] Rectangle selection (click to select)
+- [x] Circle creation via click-and-drag (center to edge)
+- [x] Line creation via click-and-drag (start to end point)
+- [x] Text creation via click, double-click to edit
+- [x] Size constraints (rectangles: 10×10-2000×2000px, circles: 5-1000px radius, lines: 10-5000px length)
+- [x] Single clicks (no drag) ignored for rect/circle/line
+- [x] Flexible color selection with HexColorPicker
+- [x] Text formatting (bold, italic, underline, font size 8-72px)
+- [x] Shape selection (click to select any shape type)
 - [x] Single selection only (no multi-select)
 - [x] Visual selection feedback (border)
 - [x] Deselection (click empty canvas or Escape)
-- [x] Rectangle movement (drag selected shape)
-- [x] Rectangle deletion (Delete/Backspace key or toolbar button)
+- [x] Shape movement (drag selected shape of any type)
+- [x] Shape deletion (Delete/Backspace key or toolbar button)
+- [x] Line stroke width control (default 2px, rounded caps)
 
-### ✅ Mode Switching (PR #13.1)
+### ✅ Mode Switching (PR #13.1, Additional Shapes)
 - [x] Pan Mode (default): Drag to move canvas
-- [x] Rectangle Mode: Drag to create shapes
+- [x] Rectangle Mode: Drag to create rectangles
+- [x] Circle Mode: Drag to create circles
+- [x] Line Mode: Drag to create lines
+- [x] Text Mode: Click to place, double-click to edit
 - [x] Mode toggle buttons in toolbar
 - [x] Visual cursor feedback (grab vs crosshair)
-- [x] Keyboard shortcuts (V = pan, R = rectangle)
+- [x] Keyboard shortcuts (V = pan, R = rectangle, etc.)
 - [x] Active mode highlighted in UI
+- [x] Info panel showing all available modes
 
-### ✅ Toolbar (PR #6, #13.1)
-- [x] Mode buttons (Pan, Rectangle)
-- [x] 5-color palette with selection feedback
+### ✅ Toolbar (PR #6, #13.1, Additional Shapes)
+- [x] Mode buttons (Pan, Rectangle, Circle, Line, Text)
+- [x] Flexible HexColorPicker for any color selection
 - [x] Delete button (disabled when nothing selected)
-- [x] Fixed position (top-left in canvas)
+- [x] Modern dark theme (zinc-900/gray-800 background)
+- [x] Fixed position (left side, full height)
+- [x] Hover tooltips and visual feedback
+- [x] Info button to toggle mode reference panel
 - [x] Keyboard shortcut hints in tooltips
 
-### ✅ Real-Time Synchronization (PR #9)
+### ✅ Real-Time Synchronization (PR #9, Additional Shapes)
 - [x] Firebase Realtime Database integration
 - [x] Optimistic local updates (instant feedback)
 - [x] Real-time sync across all clients (<100ms)
-- [x] Create shape → sync to Firebase
-- [x] Update shape position → sync to Firebase
+- [x] Create shape → sync to Firebase (all shape types)
+- [x] Update shape position/properties → sync to Firebase
 - [x] Delete shape → sync to Firebase
+- [x] Text formatting changes sync in real-time
 - [x] Remote changes update local state via listeners
 - [x] Last-write-wins conflict resolution
 - [x] Listener cleanup on unmount (no memory leaks)
 - [x] Canvas-scoped data isolation
+- [x] Backward compatibility with existing shapes
 
 ### ✅ Multiplayer Cursors (PR #10)
 - [x] Track cursor position for each user
@@ -131,13 +144,16 @@
 - [x] Redirect to list on canvas deletion or not found
 - [x] Network error recovery with auto-retry
 
-### ✅ Testing (PR #3, #7, #8, #9, #11, #12)
+### ✅ Testing (PR #3, #7, #8, #9, #11, #12, Additional Shapes)
 - [x] Auth system tests (email link, Google)
 - [x] Canvas operations tests (create, select, move, delete)
+- [x] Shape-specific tests (Circle, Line, Text, Rectangle)
+- [x] Shape selector tests (toolbar component)
 - [x] Real-time sync tests (optimistic updates, listeners)
 - [x] Presence tests (join, leave, cursor tracking)
 - [x] Integration tests (end-to-end flows)
 - [x] Test coverage >70%
+- [x] All tests using Vitest framework
 
 ### ✅ Deployment (PR #13)
 - [x] Production build optimized
@@ -152,13 +168,13 @@
 ## What's Left to Build
 
 ### Nothing Critical
-All MVP and planned enhancement features are complete. The application is fully functional and deployed.
+All MVP and planned enhancement features are complete, including additional shape types. The application is fully functional and deployed.
 
 ### Future Enhancements (Optional)
 See `productContext.md` for detailed future roadmap. Highlights:
 
 #### Phase 2: Enhanced Collaboration
-- [ ] Multiple shape types (circles, ellipses, lines, text)
+- [x] Multiple shape types (circles, lines, text) - COMPLETED
 - [ ] Multi-selection and grouping
 - [ ] Undo/redo functionality
 - [ ] Shape resizing and rotation
@@ -201,13 +217,13 @@ No critical bugs reported. Application is stable.
 No minor issues reported.
 
 ### Limitations (By Design)
-These are intentional MVP simplifications:
+These are intentional simplifications:
 - No undo/redo (future enhancement)
 - Single selection only (future: multi-select)
-- Rectangle shapes only (future: circles, lines, text)
 - No shape resizing/rotation (future enhancement)
 - No export/import (future enhancement)
 - Basic mobile support (no touch optimizations)
+- Single-line text only (future: multi-line support)
 
 ---
 

@@ -186,6 +186,19 @@ VITE_FIREBASE_APP_ID
 
 ## Testing Configuration
 
+### Testing Framework
+- **Vitest 3.2.4**: Fast unit test framework (Vite-native)
+- **React Testing Library 16.3.0**: Component testing utilities
+- **@testing-library/jest-dom 6.9.1**: DOM matchers
+- **@testing-library/user-event 14.6.1**: User interaction simulation
+- **JSDOM 27.0.0**: DOM implementation for tests
+
+### Test File Organization
+- **Location**: All test files in `tests/` directory (NOT alongside components)
+- **Naming**: `tests/[component-name].test.tsx` (e.g., `tests/circle.test.tsx`)
+- **Structure**: One test file per component/feature
+- **Setup**: `tests/setup.ts` for global test configuration
+
 ### Vitest Setup (`tests/setup.ts`)
 - JSDOM environment for DOM testing
 - @testing-library/jest-dom matchers
@@ -194,16 +207,25 @@ VITE_FIREBASE_APP_ID
 
 ### Test Scripts
 ```bash
-npm test              # Run all tests
-npm test -- --ui      # Run with UI
-npm test -- --watch   # Watch mode
-npm test -- --coverage # Coverage report
+npm test                           # Run all tests
+npm test -- --ui                  # Run with UI
+npm test -- --watch               # Watch mode
+npm test -- --coverage            # Coverage report
+npm test -- --testPathPattern=circle  # Run specific tests
 ```
 
 ### Test Coverage Target
 - **Goal**: >70% coverage
 - **Focus**: Critical paths (auth, CRUD, sync)
 - **Manual Tests**: Multi-user scenarios, performance
+
+### Testing Standards
+- **Framework**: Use Vitest (not Jest)
+- **Mocking**: Use `vi.mock()` instead of `jest.mock()`
+- **Assertions**: Use `@testing-library/jest-dom` matchers
+- **Location**: All tests in `tests/` directory
+- **Naming**: `[feature].test.tsx` format
+- **Imports**: Use `vi` from 'vitest' for mocking utilities
 
 ## Deployment
 
@@ -267,12 +289,15 @@ collab-canvas/
 │   │   ├── colors.ts            # Color utilities
 │   │   └── canvases.ts          # Canvas operations
 │   └── index.css                # Global styles
-├── tests/                       # Test files
-│   ├── setup.ts
-│   ├── auth.test.tsx
-│   ├── canvas.test.tsx
-│   ├── sync.test.tsx
-│   └── presence.test.tsx
+├── tests/                       # Test files (Vitest framework)
+│   ├── setup.ts                 # Global test setup
+│   ├── auth.test.tsx           # Authentication tests
+│   ├── canvas.test.tsx         # Canvas functionality tests
+│   ├── sync.test.tsx           # Real-time sync tests
+│   ├── presence.test.tsx       # Presence system tests
+│   ├── circle.test.tsx         # Circle component tests
+│   ├── line.test.tsx           # Line component tests (future)
+│   └── text.test.tsx           # Text component tests (future)
 ├── firebase.json                # Firebase config
 ├── database.rules.json          # Security rules
 ├── vite.config.ts               # Build config

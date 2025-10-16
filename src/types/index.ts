@@ -28,7 +28,8 @@ export interface AuthContextType {
 }
 
 // Canvas types
-export type CanvasMode = 'pan' | 'rectangle';
+export type CanvasMode = 'pan' | 'rectangle' | 'circle' | 'line' | 'text';
+export type ShapeType = 'rectangle' | 'circle' | 'line' | 'text';
 
 export interface Canvas {
   id: string;
@@ -46,6 +47,7 @@ export interface CanvasListItem extends Canvas {
 
 export interface Rectangle {
   id: string;
+  type: 'rectangle';
   x: number;
   y: number;
   width: number;
@@ -56,8 +58,53 @@ export interface Rectangle {
   updatedAt: number;
 }
 
+export interface Circle {
+  id: string;
+  type: 'circle';
+  centerX: number;
+  centerY: number;
+  radius: number;
+  fill: string;
+  createdBy: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Line {
+  id: string;
+  type: 'line';
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  stroke: string;
+  strokeWidth: number;
+  createdBy: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Text {
+  id: string;
+  type: 'text';
+  x: number;
+  y: number;
+  text: string;
+  fontSize: number;
+  fill: string;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  createdBy: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// Union type for all shapes
+export type Shape = Rectangle | Circle | Line | Text;
+
 export interface CanvasState {
-  objects: Rectangle[];
+  objects: Shape[];
   selectedIds: string[];
   isLoading: boolean;
   mode: CanvasMode;
@@ -88,13 +135,13 @@ export interface PresenceState {
 
 // Canvas context type
 export interface CanvasContextType {
-  objects: Rectangle[];
+  objects: Shape[];
   selectedIds: string[];
   isLoading: boolean;
   mode: CanvasMode;
   setMode: (mode: CanvasMode) => void;
-  createObject: (object: Omit<Rectangle, 'id' | 'createdAt' | 'updatedAt'>) => void;
-  updateObject: (id: string, updates: Partial<Rectangle>) => void;
+  createObject: (object: Omit<Rectangle, 'id' | 'createdAt' | 'updatedAt'> | Omit<Circle, 'id' | 'createdAt' | 'updatedAt'> | Omit<Line, 'id' | 'createdAt' | 'updatedAt'> | Omit<Text, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  updateObject: (id: string, updates: Partial<Shape>) => void;
   deleteObject: (id: string) => void;
   selectObject: (id: string | null) => void;
 }
@@ -105,4 +152,10 @@ export interface PresenceContextType {
   cursors: Map<string, CursorPosition>;
   updateCursor: (position: { x: number; y: number }) => void;
 }
+
+// Type guards for shape type validation
+export const isRectangle = (shape: Shape): shape is Rectangle => shape.type === 'rectangle';
+export const isCircle = (shape: Shape): shape is Circle => shape.type === 'circle';
+export const isLine = (shape: Shape): shape is Line => shape.type === 'line';
+export const isText = (shape: Shape): shape is Text => shape.type === 'text';
 

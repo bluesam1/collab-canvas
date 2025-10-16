@@ -13,8 +13,14 @@ export function OnlineUsers() {
   const usersArray = Array.from(onlineUsers.values());
   const onlineCount = usersArray.length;
 
-  // Show first 3 users in compact view
-  const displayUsers = usersArray.slice(0, 3);
+  // Separate current user from others
+  const currentUser = usersArray.find(user => user.uid === authContext?.user?.uid);
+  const otherUsers = usersArray.filter(user => user.uid !== authContext?.user?.uid);
+  
+  // For compact view, prioritize current user + 2 others
+  const displayUsers = currentUser 
+    ? [currentUser, ...otherUsers.slice(0, 2)]
+    : usersArray.slice(0, 3);
   const hasMoreUsers = onlineCount > 3;
 
   return (
@@ -71,12 +77,28 @@ export function OnlineUsers() {
               </div>
             ) : (
               <div className="py-2">
-                {usersArray.map((user) => (
+                {/* Current user first */}
+                {currentUser && (
+                  <UserIndicator
+                    key={currentUser.uid}
+                    email={currentUser.email}
+                    color={currentUser.color}
+                    isCurrentUser={true}
+                  />
+                )}
+                
+                {/* Separator if there are other users */}
+                {currentUser && otherUsers.length > 0 && (
+                  <div className="mx-4 my-2 border-t border-gray-200"></div>
+                )}
+                
+                {/* Other users */}
+                {otherUsers.map((user) => (
                   <UserIndicator
                     key={user.uid}
                     email={user.email}
                     color={user.color}
-                    isCurrentUser={user.uid === authContext?.user?.uid}
+                    isCurrentUser={false}
                   />
                 ))}
               </div>

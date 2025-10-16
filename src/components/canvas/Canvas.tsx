@@ -1,7 +1,12 @@
 import { useRef, useState, useEffect, useContext } from 'react';
-import { Stage, Layer, Line, Rect } from 'react-konva';
+import { Stage, Layer, Line as KonvaLine, Rect, Circle as KonvaCircle } from 'react-konva';
 import Konva from 'konva';
 import { Rectangle } from './Rectangle';
+import { Circle } from './Circle';
+import { Line } from './Line';
+import { Text } from './Text';
+import { TextEditModal } from './TextEditModal';
+import { isRectangle, isCircle, isLine, isText } from '../../types';
 import { Cursor } from './Cursor';
 import { useCanvas } from '../../hooks/useCanvas';
 import { usePresence } from '../../hooks/usePresence';
@@ -21,9 +26,10 @@ const MAX_RECT_SIZE = 2000;
 
 interface CanvasProps {
   selectedColor: string;
+  showInfo: boolean;
 }
 
-export function Canvas({ selectedColor }: CanvasProps) {
+export function Canvas({ selectedColor, showInfo }: CanvasProps) {
   const stageRef = useRef<Konva.Stage>(null);
   const [stageSize, setStageSize] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
@@ -31,10 +37,22 @@ export function Canvas({ selectedColor }: CanvasProps) {
   const [isPanning, setIsPanning] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
-  // Rectangle creation state
+  // Shape creation state
   const [isCreating, setIsCreating] = useState(false);
-  const [newRectStart, setNewRectStart] = useState<{ x: number; y: number } | null>(null);
-  const [newRectEnd, setNewRectEnd] = useState<{ x: number; y: number } | null>(null);
+  const [newShapeStart, setNewShapeStart] = useState<{ x: number; y: number } | null>(null);
+  const [newShapeEnd, setNewShapeEnd] = useState<{ x: number; y: number } | null>(null);
+
+  // Text modal state
+  const [isTextModalOpen, setIsTextModalOpen] = useState(false);
+  const [textModalValue, setTextModalValue] = useState('');
+  const [textModalPosition, setTextModalPosition] = useState({ x: 0, y: 0 });
+  const [textModalFontSize, setTextModalFontSize] = useState(16);
+  const [textModalBold, setTextModalBold] = useState(false);
+  const [textModalItalic, setTextModalItalic] = useState(false);
+  const [textModalUnderline, setTextModalUnderline] = useState(false);
+  const [editingTextId, setEditingTextId] = useState<string | null>(null);
+  const [textModalKey, setTextModalKey] = useState(0);
+
 
   // Canvas context and user context
   const { objects, selectedIds, isLoading, mode, setMode, createObject, updateObject, selectObject, deleteObject } = useCanvas();
@@ -53,6 +71,9 @@ export function Canvas({ selectedColor }: CanvasProps) {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // Cursor logic is handled by the Stage component
+
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -87,22 +108,37 @@ export function Canvas({ selectedColor }: CanvasProps) {
     // If clicking on empty space (stage background)
     const clickedOnEmpty = e.target === e.target.getStage();
 
+    // Deselect when clicking on empty space (in any mode)
+    if (clickedOnEmpty) {
+      selectObject(null);
+    }
+
     // Handle based on current mode
     if (e.evt.button === 0) {  // Left mouse button
       const stage = stageRef.current;
       if (stage) {
         const pos = stage.getPointerPosition();
         if (pos) {
-          if (mode === 'rectangle') {
-            // Rectangle mode: Start creating rectangle (works even over existing shapes)
-            const worldPos = {
-              x: (pos.x - stage.x()) / stage.scaleX(),
-              y: (pos.y - stage.y()) / stage.scaleY(),
-            };
-            setNewRectStart(worldPos);
+          const worldPos = {
+            x: (pos.x - stage.x()) / stage.scaleX(),
+            y: (pos.y - stage.y()) / stage.scaleY(),
+          };
+
+          if (mode === 'rectangle' || mode === 'circle' || mode === 'line') {
+            // Shape creation modes: Start creating shape (works even over existing shapes)
+            setNewShapeStart(worldPos);
             setIsCreating(true);
-            // Deselect any selected object
-            selectObject(null);
+          } else if (mode === 'text') {
+            // Text mode: Show text modal
+            setTextModalPosition(worldPos);
+            setTextModalValue('');
+            setTextModalFontSize(16);
+            setTextModalBold(false);
+            setTextModalItalic(false);
+            setTextModalUnderline(false);
+            setEditingTextId(null);
+            setTextModalKey(prev => prev + 1); // Force modal remount
+            setIsTextModalOpen(true);
           } else if (mode === 'pan' && clickedOnEmpty) {
             // Pan mode: Start panning only on empty space
             setIsPanning(true);
@@ -111,9 +147,6 @@ export function Canvas({ selectedColor }: CanvasProps) {
               x: e.evt.clientX - stagePos.x,
               y: e.evt.clientY - stagePos.y,
             });
-          } else if (clickedOnEmpty) {
-            // Deselect on empty click in select mode
-            selectObject(null);
           }
         }
       }
@@ -164,7 +197,7 @@ export function Canvas({ selectedColor }: CanvasProps) {
         });
         setStagePos(newPos);
       }
-    } else if (isCreating && newRectStart) {
+    } else if (isCreating && newShapeStart) {
       if (stage) {
         const pos = stage.getPointerPosition();
         if (pos) {
@@ -173,7 +206,7 @@ export function Canvas({ selectedColor }: CanvasProps) {
             x: (pos.x - stage.x()) / stage.scaleX(),
             y: (pos.y - stage.y()) / stage.scaleY(),
           };
-          setNewRectEnd(worldPos);
+          setNewShapeEnd(worldPos);
         }
       }
     }
@@ -183,42 +216,94 @@ export function Canvas({ selectedColor }: CanvasProps) {
   const handleMouseUp = () => {
     if (isPanning) {
       setIsPanning(false);
-    } else if (isCreating && newRectStart && newRectEnd) {
-      // Calculate rectangle dimensions
-      const width = Math.abs(newRectEnd.x - newRectStart.x);
-      const height = Math.abs(newRectEnd.y - newRectStart.y);
+    } else if (isCreating && newShapeStart && newShapeEnd) {
+      if (authContext?.user) {
+        if (mode === 'rectangle') {
+          // Calculate rectangle dimensions
+          const width = Math.abs(newShapeEnd.x - newShapeStart.x);
+          const height = Math.abs(newShapeEnd.y - newShapeStart.y);
 
-      // Only create if dragged enough (minimum size)
-      if (width >= MIN_RECT_SIZE && height >= MIN_RECT_SIZE) {
-        // Enforce maximum size
-        const constrainedWidth = Math.min(width, MAX_RECT_SIZE);
-        const constrainedHeight = Math.min(height, MAX_RECT_SIZE);
+          // Only create if dragged enough (minimum size)
+          if (width >= MIN_RECT_SIZE && height >= MIN_RECT_SIZE) {
+            // Enforce maximum size
+            const constrainedWidth = Math.min(width, MAX_RECT_SIZE);
+            const constrainedHeight = Math.min(height, MAX_RECT_SIZE);
 
-        const x = Math.min(newRectStart.x, newRectEnd.x);
-        const y = Math.min(newRectStart.y, newRectEnd.y);
+            const x = Math.min(newShapeStart.x, newShapeEnd.x);
+            const y = Math.min(newShapeStart.y, newShapeEnd.y);
 
-        // Create the rectangle
-        if (authContext?.user) {
-          createObject({
-            x,
-            y,
-            width: constrainedWidth,
-            height: constrainedHeight,
-            fill: selectedColor,
-            createdBy: authContext.user.uid,
-          });
+            createObject({
+              type: 'rectangle',
+              x,
+              y,
+              width: constrainedWidth,
+              height: constrainedHeight,
+              fill: selectedColor,
+              createdBy: authContext.user.uid,
+            });
+          }
+        } else if (mode === 'circle') {
+          // Calculate circle center and radius
+          const centerX = (newShapeStart.x + newShapeEnd.x) / 2;
+          const centerY = (newShapeStart.y + newShapeEnd.y) / 2;
+          const radius = Math.sqrt(
+            Math.pow(newShapeEnd.x - newShapeStart.x, 2) + 
+            Math.pow(newShapeEnd.y - newShapeStart.y, 2)
+          ) / 2;
+
+          // Only create if dragged enough (minimum radius)
+          if (radius >= MIN_RECT_SIZE / 2) {
+            const constrainedRadius = Math.min(radius, MAX_RECT_SIZE / 2);
+
+            createObject({
+              type: 'circle',
+              centerX,
+              centerY,
+              radius: constrainedRadius,
+              fill: selectedColor,
+              createdBy: authContext.user.uid,
+            });
+          }
+        } else if (mode === 'line') {
+          // Calculate line length
+          const length = Math.sqrt(
+            Math.pow(newShapeEnd.x - newShapeStart.x, 2) + 
+            Math.pow(newShapeEnd.y - newShapeStart.y, 2)
+          );
+
+          // Only create if dragged enough (minimum length)
+          if (length >= 10) {
+            const maxLength = 5000;
+            const constrainedLength = Math.min(length, maxLength);
+            
+            // Calculate constrained end point
+            const angle = Math.atan2(newShapeEnd.y - newShapeStart.y, newShapeEnd.x - newShapeStart.x);
+            const constrainedEndX = newShapeStart.x + Math.cos(angle) * constrainedLength;
+            const constrainedEndY = newShapeStart.y + Math.sin(angle) * constrainedLength;
+
+            createObject({
+              type: 'line',
+              x1: newShapeStart.x,
+              y1: newShapeStart.y,
+              x2: constrainedEndX,
+              y2: constrainedEndY,
+              stroke: selectedColor,
+              strokeWidth: 4,
+              createdBy: authContext.user.uid,
+            });
+          }
         }
       }
 
       // Reset creation state
       setIsCreating(false);
-      setNewRectStart(null);
-      setNewRectEnd(null);
+      setNewShapeStart(null);
+      setNewShapeEnd(null);
     } else {
       // If no drag occurred, just reset
       setIsCreating(false);
-      setNewRectStart(null);
-      setNewRectEnd(null);
+      setNewShapeStart(null);
+      setNewShapeEnd(null);
     }
   };
 
@@ -275,7 +360,7 @@ export function Canvas({ selectedColor }: CanvasProps) {
     // Vertical lines
     for (let i = -padding; i <= CANVAS_WIDTH + padding; i += GRID_SIZE) {
       lines.push(
-        <Line
+        <KonvaLine
           key={`v-${i}`}
           points={[i, -padding, i, CANVAS_HEIGHT + padding]}
           stroke="#e0e0e0"
@@ -288,7 +373,7 @@ export function Canvas({ selectedColor }: CanvasProps) {
     // Horizontal lines
     for (let i = -padding; i <= CANVAS_HEIGHT + padding; i += GRID_SIZE) {
       lines.push(
-        <Line
+        <KonvaLine
           key={`h-${i}`}
           points={[-padding, i, CANVAS_WIDTH + padding, i]}
           stroke="#e0e0e0"
@@ -316,27 +401,143 @@ export function Canvas({ selectedColor }: CanvasProps) {
     updateObject(id, { x, y });
   };
 
-  // Calculate preview rectangle dimensions
-  const getPreviewRect = () => {
-    if (!isCreating || !newRectStart || !newRectEnd) return null;
-
-    const width = Math.abs(newRectEnd.x - newRectStart.x);
-    const height = Math.abs(newRectEnd.y - newRectStart.y);
-
-    // Only show preview if dragged enough
-    if (width < MIN_RECT_SIZE || height < MIN_RECT_SIZE) return null;
-
-    // Constrain to maximum size
-    const constrainedWidth = Math.min(width, MAX_RECT_SIZE);
-    const constrainedHeight = Math.min(height, MAX_RECT_SIZE);
-
-    const x = Math.min(newRectStart.x, newRectEnd.x);
-    const y = Math.min(newRectStart.y, newRectEnd.y);
-
-    return { x, y, width: constrainedWidth, height: constrainedHeight };
+  // Handle line drag end
+  const handleLineDragEnd = (id: string, x1: number, y1: number, x2: number, y2: number) => {
+    updateObject(id, { x1, y1, x2, y2 });
   };
 
-  const previewRect = getPreviewRect();
+  // Handle text drag end
+  const handleTextDragEnd = (id: string, x: number, y: number) => {
+    updateObject(id, { x, y });
+  };
+
+  // Handle text click - select first, then open modal for editing
+  const handleTextClick = (id: string) => {
+    const textObject = objects.find(obj => obj.id === id && isText(obj));
+    if (textObject && isText(textObject)) {
+      if (selectedIds.includes(id)) {
+        // If already selected, open edit modal
+        setEditingTextId(id);
+        setTextModalValue(textObject.text);
+        setTextModalFontSize(textObject.fontSize || 16);
+        setTextModalBold(textObject.bold || false);
+        setTextModalItalic(textObject.italic || false);
+        setTextModalUnderline(textObject.underline || false);
+        setIsTextModalOpen(true);
+      } else {
+        // If not selected, just select it
+        selectObject(id);
+      }
+    }
+  };
+
+  // Handle text change (for double-click inline editing - deprecated but keeping for compatibility)
+  const handleTextChange = (id: string, newText: string) => {
+    updateObject(id, { text: newText });
+  };
+
+  // Handle text modal save
+  const handleTextModalSave = (text: string, fontSize: number, bold: boolean, italic: boolean, underline: boolean) => {
+    if (editingTextId) {
+      // Editing existing text
+      updateObject(editingTextId, { text, fontSize, bold, italic, underline });
+    } else if (authContext?.user) {
+      // Creating new text
+      createObject({
+        type: 'text',
+        x: textModalPosition.x,
+        y: textModalPosition.y,
+        text,
+        fontSize,
+        fill: selectedColor,
+        bold,
+        italic,
+        underline,
+        createdBy: authContext.user.uid,
+      });
+    }
+    setIsTextModalOpen(false);
+    setEditingTextId(null);
+    // Reset modal state
+    setTextModalValue('');
+    setTextModalFontSize(16);
+    setTextModalBold(false);
+    setTextModalItalic(false);
+    setTextModalUnderline(false);
+  };
+
+  const handleTextModalCancel = () => {
+    setIsTextModalOpen(false);
+    setEditingTextId(null);
+    // Reset modal state
+    setTextModalValue('');
+    setTextModalFontSize(16);
+    setTextModalBold(false);
+    setTextModalItalic(false);
+    setTextModalUnderline(false);
+  };
+
+
+  // Calculate preview shape dimensions
+  const getPreviewShape = () => {
+    if (!isCreating || !newShapeStart || !newShapeEnd) return null;
+
+    if (mode === 'rectangle') {
+      const width = Math.abs(newShapeEnd.x - newShapeStart.x);
+      const height = Math.abs(newShapeEnd.y - newShapeStart.y);
+
+      // Only show preview if dragged enough
+      if (width < MIN_RECT_SIZE || height < MIN_RECT_SIZE) return null;
+
+      // Constrain to maximum size
+      const constrainedWidth = Math.min(width, MAX_RECT_SIZE);
+      const constrainedHeight = Math.min(height, MAX_RECT_SIZE);
+
+      const x = Math.min(newShapeStart.x, newShapeEnd.x);
+      const y = Math.min(newShapeStart.y, newShapeEnd.y);
+
+      return { type: 'rectangle', x, y, width: constrainedWidth, height: constrainedHeight };
+    } else if (mode === 'circle') {
+      const centerX = (newShapeStart.x + newShapeEnd.x) / 2;
+      const centerY = (newShapeStart.y + newShapeEnd.y) / 2;
+      const radius = Math.sqrt(
+        Math.pow(newShapeEnd.x - newShapeStart.x, 2) + 
+        Math.pow(newShapeEnd.y - newShapeStart.y, 2)
+      ) / 2;
+
+      if (radius < MIN_RECT_SIZE / 2) return null;
+
+      const constrainedRadius = Math.min(radius, MAX_RECT_SIZE / 2);
+
+      return { type: 'circle', centerX, centerY, radius: constrainedRadius };
+    } else if (mode === 'line') {
+      const length = Math.sqrt(
+        Math.pow(newShapeEnd.x - newShapeStart.x, 2) + 
+        Math.pow(newShapeEnd.y - newShapeStart.y, 2)
+      );
+
+      if (length < 10) return null;
+
+      const maxLength = 5000;
+      const constrainedLength = Math.min(length, maxLength);
+      
+      const angle = Math.atan2(newShapeEnd.y - newShapeStart.y, newShapeEnd.x - newShapeStart.x);
+      const constrainedEndX = newShapeStart.x + Math.cos(angle) * constrainedLength;
+      const constrainedEndY = newShapeStart.y + Math.sin(angle) * constrainedLength;
+
+      return { 
+        type: 'line', 
+        x1: newShapeStart.x, 
+        y1: newShapeStart.y, 
+        x2: constrainedEndX, 
+        y2: constrainedEndY 
+      };
+    }
+
+    return null;
+  };
+
+  const previewShape = getPreviewShape();
 
   // Show loading indicator while fetching initial data
   if (isLoading) {
@@ -351,7 +552,7 @@ export function Canvas({ selectedColor }: CanvasProps) {
   }
 
   return (
-    <div className="relative w-full h-screen overflow-hidden bg-gray-50">
+    <div className="relative w-full h-screen overflow-hidden bg-gray-50 canvas-container">
       <Stage
         ref={stageRef}
         width={stageSize.width}
@@ -370,9 +571,9 @@ export function Canvas({ selectedColor }: CanvasProps) {
             ? 'grabbing' 
             : isCreating 
             ? 'crosshair' 
-            : mode === 'rectangle' 
-            ? 'crosshair' 
-            : 'grab'
+            : mode === 'pan'
+            ? 'grab'
+            : 'crosshair'
         }}
       >
         {/* Grid layer */}
@@ -382,33 +583,107 @@ export function Canvas({ selectedColor }: CanvasProps) {
 
         {/* Objects layer */}
         <Layer>
-          {/* Render existing rectangles */}
-          {objects.map((rect) => (
-            <Rectangle
-              key={rect.id}
-              rectangle={rect}
-              isSelected={selectedIds.includes(rect.id)}
-              onClick={handleRectangleClick}
-              onDragMove={handleRectangleDragMove}
-              onDragEnd={handleRectangleDragEnd}
-              mode={mode}
-            />
-          ))}
+          {/* Render existing shapes */}
+          {objects.map((shape) => {
+            if (isRectangle(shape)) {
+              return (
+                <Rectangle
+                  key={shape.id}
+                  rectangle={shape}
+                  isSelected={selectedIds.includes(shape.id)}
+                  onClick={handleRectangleClick}
+                  onDragMove={handleRectangleDragMove}
+                  onDragEnd={handleRectangleDragEnd}
+                  mode={mode}
+                />
+              );
+            } else if (isCircle(shape)) {
+              return (
+                <Circle
+                  key={shape.id}
+                  circle={shape}
+                  isSelected={selectedIds.includes(shape.id)}
+                  onClick={handleRectangleClick}
+                  onDragMove={handleRectangleDragMove}
+                  onDragEnd={handleRectangleDragEnd}
+                  mode={mode}
+                />
+              );
+            } else if (isLine(shape)) {
+              return (
+                <Line
+                  key={shape.id}
+                  line={shape}
+                  isSelected={selectedIds.includes(shape.id)}
+                  onClick={(id) => handleRectangleClick(id)}
+                  onDragMove={(x, y) => handleRectangleDragMove(x, y)}
+                  onDragEnd={(id, x1, y1, x2, y2) => handleLineDragEnd(id, x1, y1, x2, y2)}
+                  mode={mode}
+                />
+              );
+            } else if (isText(shape)) {
+              return (
+                <Text
+                  key={shape.id}
+                  text={shape}
+                  isSelected={selectedIds.includes(shape.id)}
+                  onClick={(id) => handleTextClick(id)}
+                  onDragMove={(x, y) => handleRectangleDragMove(x, y)}
+                  onDragEnd={(id, x, y) => handleTextDragEnd(id, x, y)}
+                  onTextChange={handleTextChange}
+                  mode={mode}
+                />
+              );
+            }
+            return null;
+          })}
 
-          {/* Preview rectangle during creation */}
-          {previewRect && (
-            <Rect
-              x={previewRect.x}
-              y={previewRect.y}
-              width={previewRect.width}
-              height={previewRect.height}
-              fill={selectedColor}
-              opacity={0.5}
-              stroke={selectedColor}
-              strokeWidth={2}
-              dash={[10, 5]}
-              listening={false}
-            />
+          {/* Preview shape during creation */}
+          {previewShape && (
+            <>
+              {previewShape.type === 'rectangle' && 'x' in previewShape && (
+                <Rect
+                  x={(previewShape as any).x}
+                  y={(previewShape as any).y}
+                  width={(previewShape as any).width}
+                  height={(previewShape as any).height}
+                  fill={selectedColor}
+                  opacity={0.5}
+                  stroke={selectedColor}
+                  strokeWidth={2}
+                  dash={[10, 5]}
+                  listening={false}
+                />
+              )}
+              {previewShape.type === 'circle' && 'centerX' in previewShape && (
+                <KonvaCircle
+                  x={(previewShape as any).centerX}
+                  y={(previewShape as any).centerY}
+                  radius={(previewShape as any).radius}
+                  fill={selectedColor}
+                  opacity={0.5}
+                  stroke={selectedColor}
+                  strokeWidth={2}
+                  dash={[10, 5]}
+                  listening={false}
+                />
+              )}
+              {previewShape.type === 'line' && 'x1' in previewShape && (
+                <KonvaLine
+                  points={[
+                    (previewShape as any).x1, 
+                    (previewShape as any).y1, 
+                    (previewShape as any).x2, 
+                    (previewShape as any).y2
+                  ]}
+                  stroke={selectedColor}
+                  strokeWidth={2}
+                  opacity={0.5}
+                  dash={[10, 5]}
+                  listening={false}
+                />
+              )}
+            </>
           )}
         </Layer>
 
@@ -428,36 +703,53 @@ export function Canvas({ selectedColor }: CanvasProps) {
       </Stage>
 
       {/* Canvas info overlay */}
-      <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur-sm px-4 py-2 rounded-lg shadow-lg text-sm">
-        <div className="flex flex-col gap-1">
-          <div>
-            <span className="font-semibold">Zoom:</span>{' '}
-            {(stageScale * 100).toFixed(0)}%
-          </div>
-          <div>
-            <span className="font-semibold">Position:</span>{' '}
-            ({Math.round(stagePos.x)}, {Math.round(stagePos.y)})
-          </div>
-          <div>
-            <span className="font-semibold">Objects:</span> {objects.length}
-          </div>
-          {selectedIds.length > 0 && (
-            <div className="text-green-700">
-              <span className="font-semibold">Selected:</span> {selectedIds.length}
+      {showInfo && (
+        <div className="absolute bottom-4 left-20 bg-white/90 backdrop-blur-sm px-4 py-2 rounded-lg shadow-lg text-sm z-30">
+          <div className="flex flex-col gap-1">
+            <div>
+              <span className="font-semibold">Zoom:</span>{' '}
+              {(stageScale * 100).toFixed(0)}%
             </div>
-          )}
-          <div>
-            <span className="font-semibold">Mode:</span>{' '}
-            {mode === 'pan' ? '✋ Pan' : '⬛ Rectangle'}
-          </div>
-          <div className="text-xs text-gray-600 mt-1">
-            {mode === 'pan' 
-              ? 'Click & drag to pan • V=Pan • R=Rectangle'
-              : 'Click & drag to create • Click to select • Del to delete'
-            }
+            <div>
+              <span className="font-semibold">Position:</span>{' '}
+              ({Math.round(stagePos.x)}, {Math.round(stagePos.y)})
+            </div>
+            <div>
+              <span className="font-semibold">Objects:</span> {objects.length}
+            </div>
+            {selectedIds.length > 0 && (
+              <div className="text-green-700">
+                <span className="font-semibold">Selected:</span> {selectedIds.length}
+              </div>
+            )}
+            <div>
+              <span className="font-semibold">Mode:</span>{' '}
+              {mode === 'pan' ? '👆 Navigation' : mode === 'rectangle' ? '⬛ Rectangle' : mode === 'circle' ? '⭕ Circle' : mode === 'line' ? '➖ Line' : mode === 'text' ? '📝 Text' : mode}
+            </div>
+            <div className="text-xs text-gray-600 mt-1">
+              {mode === 'pan' 
+                ? 'Click & drag to navigate'
+                : mode === 'text'
+                ? 'Click to add text'
+                : 'Click & drag to create'
+              }
+            </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* Text edit modal */}
+      <TextEditModal
+        key={textModalKey}
+        isOpen={isTextModalOpen}
+        initialText={textModalValue}
+        initialFontSize={textModalFontSize}
+        initialBold={textModalBold}
+        initialItalic={textModalItalic}
+        initialUnderline={textModalUnderline}
+        onSave={handleTextModalSave}
+        onCancel={handleTextModalCancel}
+      />
     </div>
   );
 }

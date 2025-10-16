@@ -1,6 +1,6 @@
 import { createContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
-import type { Rectangle, CanvasContextType, CanvasMode } from '../types';
+import type { Shape, CanvasContextType, CanvasMode, Rectangle, Circle, Line, Text } from '../types';
 import { 
   subscribeToObjects, 
   createObject as createFirebaseObject,
@@ -19,7 +19,7 @@ interface CanvasContextProviderProps {
 }
 
 export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProviderProps) => {
-  const [objects, setObjects] = useState<Rectangle[]>([]);
+  const [objects, setObjects] = useState<Shape[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [mode, setMode] = useState<CanvasMode>('pan'); // Default to pan mode
@@ -31,19 +31,75 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
     // Subscribe to objects in Firebase for this specific canvas
     const unsubscribe = subscribeToObjects(canvasId, (data: Record<string, unknown>) => {
       // Convert Firebase object format to array
-      const objectsArray: Rectangle[] = Object.entries(data).map(([id, obj]) => {
+      const objectsArray: Shape[] = Object.entries(data).map(([id, obj]) => {
         const objectData = obj as Record<string, unknown>;
-        return {
+        const type = objectData.type as string;
+        
+        // Create base shape data
+        const baseShape = {
           id,
-          x: objectData.x as number,
-          y: objectData.y as number,
-          width: objectData.width as number,
-          height: objectData.height as number,
-          fill: objectData.fill as string,
           createdBy: objectData.createdBy as string,
           createdAt: objectData.createdAt as number,
           updatedAt: objectData.updatedAt as number,
         };
+
+        // Create shape based on type
+        switch (type) {
+          case 'rectangle':
+            return {
+              ...baseShape,
+              type: 'rectangle' as const,
+              x: objectData.x as number,
+              y: objectData.y as number,
+              width: objectData.width as number,
+              height: objectData.height as number,
+              fill: objectData.fill as string,
+            } as Rectangle;
+          case 'circle':
+            return {
+              ...baseShape,
+              type: 'circle' as const,
+              centerX: objectData.centerX as number,
+              centerY: objectData.centerY as number,
+              radius: objectData.radius as number,
+              fill: objectData.fill as string,
+            } as Circle;
+          case 'line':
+            return {
+              ...baseShape,
+              type: 'line' as const,
+              x1: objectData.x1 as number,
+              y1: objectData.y1 as number,
+              x2: objectData.x2 as number,
+              y2: objectData.y2 as number,
+              stroke: objectData.stroke as string,
+              strokeWidth: objectData.strokeWidth as number,
+            } as Line;
+          case 'text':
+            return {
+              ...baseShape,
+              type: 'text' as const,
+              x: objectData.x as number,
+              y: objectData.y as number,
+              text: objectData.text as string,
+              fontSize: objectData.fontSize as number,
+              fill: objectData.fill as string,
+              bold: objectData.bold as boolean | undefined,
+              italic: objectData.italic as boolean | undefined,
+              underline: objectData.underline as boolean | undefined,
+            } as Text;
+          default:
+            // Fallback to rectangle for backward compatibility
+            return {
+              ...baseShape,
+              type: 'rectangle' as const,
+              x: objectData.x as number,
+              y: objectData.y as number,
+              width: objectData.width as number,
+              height: objectData.height as number,
+              fill: objectData.fill as string,
+            } as Rectangle;
+        }
       });
 
       setObjects(objectsArray);
@@ -57,7 +113,7 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
   }, [canvasId]);
 
   // Create a new object with Firebase integration
-  const createObject = async (objectData: Omit<Rectangle, 'id' | 'createdAt' | 'updatedAt'>) => {
+  const createObject = async (objectData: Omit<Rectangle, 'id' | 'createdAt' | 'updatedAt'> | Omit<Circle, 'id' | 'createdAt' | 'updatedAt'> | Omit<Line, 'id' | 'createdAt' | 'updatedAt'> | Omit<Text, 'id' | 'createdAt' | 'updatedAt'>) => {
     // Generate a unique ID using Firebase push
     const objectsRef = ref(database, `objects/${canvasId}`);
     const newObjectRef = push(objectsRef);
@@ -69,12 +125,12 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
     }
 
     const now = Date.now();
-    const newObject: Rectangle = {
+    const newObject: Shape = {
       ...objectData,
       id: objectId,
       createdAt: now,
       updatedAt: now,
-    };
+    } as Shape;
 
     // Optimistic update: add to local state immediately
     setObjects((prev) => [...prev, newObject]);
@@ -95,14 +151,14 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
   };
 
   // Update an existing object with Firebase integration
-  const updateObject = async (id: string, updates: Partial<Rectangle>) => {
+  const updateObject = async (id: string, updates: Partial<Shape>) => {
     const now = Date.now();
     
     // Optimistic update: update local state immediately
     setObjects((prev) =>
       prev.map((obj) =>
         obj.id === id
-          ? { ...obj, ...updates, updatedAt: now }
+          ? { ...obj, ...updates, updatedAt: now } as Shape
           : obj
       )
     );
