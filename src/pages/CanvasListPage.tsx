@@ -146,8 +146,8 @@ export function CanvasListPage() {
       {/* Main Content */}
       <div className="pt-16 h-full overflow-y-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Search Bar - only show if there are canvases */}
-          {hasAnyCanvases && (
+          {/* Search Bar - always visible */}
+          {!isLoading && (
             <div className="mb-8">
               <div className="relative">
                 <input

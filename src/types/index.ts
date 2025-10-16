@@ -28,7 +28,7 @@ export interface AuthContextType {
 }
 
 // Canvas types
-export type CanvasMode = 'pan' | 'rectangle' | 'circle' | 'line' | 'text';
+export type CanvasMode = 'pan' | 'select' | 'rectangle' | 'circle' | 'line' | 'text';
 export type ShapeType = 'rectangle' | 'circle' | 'line' | 'text';
 
 export interface Canvas {
@@ -53,6 +53,7 @@ export interface Rectangle {
   width: number;
   height: number;
   fill: string;
+  rotation: number; // Rotation in degrees (0-360)
   createdBy: string;
   createdAt: number;
   updatedAt: number;
@@ -65,6 +66,7 @@ export interface Circle {
   centerY: number;
   radius: number;
   fill: string;
+  rotation: number; // Rotation in degrees (0-360)
   createdBy: string;
   createdAt: number;
   updatedAt: number;
@@ -73,12 +75,13 @@ export interface Circle {
 export interface Line {
   id: string;
   type: 'line';
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
+  x: number;
+  y: number;
+  width: number;  // Length of the line (horizontal when rotation is 0)
+  height: number; // Always 0 for lines (kept for consistency with rectangles)
   stroke: string;
   strokeWidth: number;
+  rotation: number; // Rotation in degrees (0-360)
   createdBy: string;
   createdAt: number;
   updatedAt: number;
@@ -92,6 +95,7 @@ export interface Text {
   text: string;
   fontSize: number;
   fill: string;
+  rotation: number; // Rotation in degrees (0-360)
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
@@ -143,7 +147,10 @@ export interface CanvasContextType {
   createObject: (object: Omit<Rectangle, 'id' | 'createdAt' | 'updatedAt'> | Omit<Circle, 'id' | 'createdAt' | 'updatedAt'> | Omit<Line, 'id' | 'createdAt' | 'updatedAt'> | Omit<Text, 'id' | 'createdAt' | 'updatedAt'>) => void;
   updateObject: (id: string, updates: Partial<Shape>) => void;
   deleteObject: (id: string) => void;
-  selectObject: (id: string | null) => void;
+  selectObject: (id: string | null, addToSelection?: boolean) => void;
+  selectMultiple: (ids: string[]) => void;
+  clearSelection: () => void;
+  deleteSelected: () => void;
 }
 
 // Presence context type

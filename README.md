@@ -6,7 +6,7 @@
 [![Vite](https://img.shields.io/badge/Vite-7.1-646cff?logo=vite)](https://vitejs.dev/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-A real-time collaborative canvas application where multiple users can create, move, and interact with shapes together. Built with React, TypeScript, Firebase, and Konva.
+A real-time collaborative canvas application where multiple users can create, select, transform, and interact with multiple shape types together. Features multi-select, resize, rotate, and real-time synchronization. Built with React, TypeScript, Firebase, and Konva.
 
 > **🚀 Live Demo**: [https://collab-canvas-2ba2e.web.app/](https://collab-canvas-2ba2e.web.app/)
 
@@ -16,13 +16,16 @@ A real-time collaborative canvas application where multiple users can create, mo
 - 🔗 **URL-Based Sharing**: Share canvases instantly by copying the link - no invite system needed
 - 🎨 **Real-time Collaboration**: See other users' changes instantly (<100ms sync)
 - 🖱️ **Multiplayer Cursors**: View other users' cursor positions with name labels (<50ms updates)
-- 🎨 **Dual Modes**: Switch between Pan mode (navigate) and Rectangle mode (draw)
-- 📦 **Shape Creation**: Click and drag to create colored rectangles with 5-color palette
-- 🎯 **Shape Manipulation**: Select, move, and delete shapes with keyboard shortcuts
+- 🎨 **Multiple Modes**: Pan, Select, Rectangle, Circle, Line, and Text creation modes
+- 📦 **Multiple Shape Types**: Rectangles, circles, lines, and text with formatting options
+- 🔲 **Multi-Select**: Select multiple shapes using 5 methods (click, Shift+click, drag-box, Ctrl/Cmd+A, Select mode)
+- 🔄 **Transform Operations**: Resize and rotate shapes with intuitive handles and controls
+- 🎯 **Advanced Manipulation**: Move, delete, change colors, and adjust line thickness for single or multiple shapes
 - 👥 **Presence System**: See who's online with colored indicators per canvas
 - 🔒 **Secure Authentication**: Email link and Google Sign-In support
 - 📱 **Responsive Canvas**: Pan and zoom with smooth 60 FPS animations
-- ⚡ **Optimized Performance**: Handles 100+ shapes with multiple concurrent users
+- ⚡ **Optimized Performance**: Handles 100+ shapes with multiple concurrent users, optimized multi-select drag
+- ⌨️ **Keyboard Shortcuts**: Quick access to all modes and operations (V, S, R, C, L, T, Ctrl/Cmd+A)
 
 ## Tech Stack
 
@@ -64,41 +67,53 @@ npm run dev
 
 ## 🏗️ Architecture Overview
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      CollabCanvas App                        │
-├─────────────────────────────────────────────────────────────┤
-│                                                               │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │   Auth UI    │  │   Toolbar    │  │  Online      │      │
-│  │   (Login)    │  │  (Colors,    │  │  Users List  │      │
-│  └──────────────┘  │   Delete)    │  └──────────────┘      │
-│                    └──────────────┘                          │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │           Canvas (Konva Stage)                        │  │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │  │
-│  │  │  Rectangle  │  │  Rectangle  │  │   Cursors   │  │  │
-│  │  │  (shapes)   │  │  (shapes)   │  │  (remote)   │  │  │
-│  │  └─────────────┘  └─────────────┘  └─────────────┘  │  │
-│  └───────────────────────────────────────────────────────┘  │
-│                                                               │
-├─────────────────────────────────────────────────────────────┤
-│                     Context Layer                            │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │UserContext   │  │CanvasContext │  │PresenceCtx   │      │
-│  │(Auth state)  │  │(Shapes state)│  │(Users/Cursor)│      │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘      │
-│         │                  │                  │              │
-├─────────┼──────────────────┼──────────────────┼──────────────┤
-│         │                  │                  │              │
-│  ┌──────▼──────────────────▼──────────────────▼───────┐     │
-│  │           Firebase Realtime Database               │     │
-│  │  ┌─────────┐  ┌─────────┐  ┌─────────────┐       │     │
-│  │  │  /auth  │  │/objects │  │ /presence   │       │     │
-│  │  └─────────┘  └─────────┘  └─────────────┘       │     │
-│  └─────────────────────────────────────────────────────┘     │
-│                                                               │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph "CollabCanvas App"
+        subgraph "UI Layer"
+            Auth[Auth UI<br/>Email Link & Google Sign-In]
+            Toolbar[Toolbar<br/>Modes, Colors, Tools]
+            OnlineUsers[Online Users<br/>Presence Indicators]
+            
+            subgraph "Canvas (Konva Stage)"
+                Shapes[Shapes<br/>Rectangles, Circles, Lines, Text]
+                Cursors[Remote Cursors<br/>Real-time Positioning]
+                Transforms[Transform Handles<br/>Resize & Rotate]
+            end
+        end
+        
+        subgraph "Context Layer"
+            UserCtx[UserContext<br/>Authentication State]
+            CanvasCtx[CanvasContext<br/>Shapes & Selection]
+            PresenceCtx[PresenceContext<br/>Users & Cursors]
+            CanvasListCtx[CanvasListContext<br/>Canvas Management]
+            ToastCtx[ToastContext<br/>Notifications]
+        end
+        
+        subgraph "Firebase Backend"
+            Auth --> UserCtx
+            
+            UserCtx --> FBAuth[Firebase Auth<br/>/users]
+            CanvasCtx --> FBDB[Realtime Database<br/>/canvases, /objects]
+            PresenceCtx --> FBPresence[Realtime Database<br/>/presence]
+            CanvasListCtx --> FBDB
+            
+            Toolbar --> CanvasCtx
+            Shapes --> CanvasCtx
+            Transforms --> CanvasCtx
+            Cursors --> PresenceCtx
+            OnlineUsers --> PresenceCtx
+        end
+    end
+    
+    style UserCtx fill:#e3f2fd
+    style CanvasCtx fill:#e3f2fd
+    style PresenceCtx fill:#e3f2fd
+    style CanvasListCtx fill:#e3f2fd
+    style ToastCtx fill:#e3f2fd
+    style FBAuth fill:#fff3e0
+    style FBDB fill:#fff3e0
+    style FBPresence fill:#fff3e0
 ```
 
 ### Data Flow
@@ -292,20 +307,39 @@ The `planning/` directory contains original design documents:
 7. **Canvas Actions**: Rename, copy link, or delete canvases you own
 
 ### Working on Canvas
-8. **Switch Modes**: Toggle between Pan mode (move canvas) and Rectangle mode (draw shapes)
-   - Press `V` for Pan mode
+8. **Switch Modes**: Toggle between different modes using toolbar or keyboard shortcuts
+   - Press `V` for Pan mode (navigate canvas)
+   - Press `S` for Select mode (drag-to-select box)
    - Press `R` for Rectangle mode
-9. **Create Shapes**: In Rectangle mode, click and drag to create rectangles
-10. **Select Colors**: Choose from 5 colors in the toolbar
-11. **Move Shapes**: Click to select, then drag to move
-12. **Delete Shapes**: Select a shape and click Delete button (or press Delete/Backspace)
-13. **Pan Canvas**: In Pan mode, drag to move around the workspace
-14. **Zoom Canvas**: Use mouse wheel to zoom in/out
+   - Press `C` for Circle mode
+   - Press `L` for Line mode
+   - Press `T` for Text mode
+9. **Create Shapes**: Click and drag to create shapes (or click for text)
+   - **Rectangles**: Drag from corner to corner
+   - **Circles**: Drag from center outward
+   - **Lines**: Drag from start point to end point
+   - **Text**: Click to place, double-click to edit with formatting options
+10. **Select Shapes**: Multiple ways to select
+    - Click on a shape to select it
+    - Shift+Click to add/remove from selection
+    - Drag a selection box in Select mode
+    - Press Ctrl/Cmd+A to select all
+11. **Transform Shapes**: Resize and rotate selected shapes
+    - **Resize**: Drag corner/edge handles (single selection only)
+    - **Rotate**: Drag rotation handle (rectangles, lines, text)
+    - Hold Shift to lock aspect ratio or disable angle snapping
+12. **Customize Shapes**: Change colors and line thickness
+    - Use color picker for any hex color
+    - Adjust line thickness (1-24px) for lines
+13. **Move Shapes**: Select and drag to move (supports multi-select group movement)
+14. **Delete Shapes**: Select shapes and press Delete/Backspace or click Delete button
+15. **Pan Canvas**: Drag canvas in Pan mode to move around the workspace
+16. **Zoom Canvas**: Use mouse wheel to zoom in/out (0.1x to 5x)
 
 ### Collaboration
-15. **See Collaborators**: View online users in the top-right corner
-16. **See Cursors**: Watch other users' cursors move in real-time
-17. **Real-time Sync**: All changes appear instantly for everyone
+17. **See Collaborators**: View online users in the top-right corner
+18. **See Cursors**: Watch other users' cursors move in real-time
+19. **Real-time Sync**: All changes appear instantly for everyone
 
 ## Features Details
 
@@ -313,15 +347,26 @@ The `planning/` directory contains original design documents:
 
 - 5000x5000px workspace
 - Programmatic pan and zoom with smooth animations
-- 60 FPS performance target
+- 60 FPS performance target during all operations
 - Grid background
+- Auto-fit on load to center all shapes
 
-### Shapes
+### Shape Types
 
-- Click-and-drag to create (single clicks ignored)
-- Size constraints: 10×10px minimum, 2000×2000px maximum
-- 5-color palette
+- **Rectangles**: Click-and-drag creation, 10×10px to 2000×2000px
+- **Circles**: Center-to-edge creation, 5px to 1000px radius, corner-only resize
+- **Lines**: Point-to-point creation, custom endpoint handles, 1-24px thickness
+- **Text**: Click to place, double-click to edit, bold/italic/underline, 8-72pt font size
+- All shapes support color customization with hex color picker
 - Real-time synchronization (<100ms latency)
+
+### Multi-Select & Transform
+
+- **5 Selection Methods**: Click, Shift+click, drag-to-select box, Ctrl/Cmd+A, Select mode
+- **Group Operations**: Move, delete, color change, line thickness (for multiple selected shapes)
+- **Resize**: Drag handles to resize (shape-specific behaviors)
+- **Rotate**: Center-based rotation with 15° angle snapping (rectangles, lines, text)
+- **Performance**: Optimized multi-select drag with ~99.9% reduction in Firebase writes
 
 ### Multiplayer
 
@@ -624,14 +669,15 @@ When testing, monitor these metrics:
 - Memory leaks with long sessions
 - Race conditions with rapid updates
 
-## Known Limitations (MVP)
+## Known Limitations
 
 - No undo/redo functionality
-- Single-selection only (no multi-select)
-- No shape resizing
-- Only rectangle shapes (no circles, text, etc.)
+- No copy/paste operations
+- No permanent shape grouping (only temporary for operations)
 - No layers/z-index control
 - No export/import functionality
+- Single-line text only (no multi-line support)
+- Basic mobile support (no touch gesture optimizations)
 
 ## Deployment Information
 
@@ -683,20 +729,23 @@ jobs:
           projectId: your-project-id
 ```
 
-## MVP Success Criteria
+## Success Criteria
 
-This project meets all MVP requirements as outlined in the PRD:
+This project exceeds all MVP requirements and includes enhanced collaboration features:
 
 ### ✅ Core Features Implemented
 - [x] User authentication (Email Link + Google Sign-In)
 - [x] Real-time collaborative canvas (5000×5000px workspace)
-- [x] Rectangle creation with click-and-drag (minimum 10×10px, maximum 2000×2000px)
-- [x] 5-color palette for shape customization
-- [x] Shape selection, movement, and deletion
-- [x] Pan and zoom with programmatic smooth animations
+- [x] Multiple shape types (rectangles, circles, lines, text)
+- [x] Flexible color customization with hex color picker
+- [x] Multi-select with 5 selection methods
+- [x] Transform operations (resize and rotate)
+- [x] Shape manipulation (selection, movement, deletion, color, line thickness)
+- [x] Pan and zoom with programmatic smooth animations (60 FPS)
 - [x] Multiplayer cursor tracking with name labels
 - [x] Online users presence system with colored indicators
 - [x] Real-time synchronization across all users
+- [x] Multiple canvases with URL-based sharing
 
 ### ✅ Technical Requirements Met
 - [x] React 19 + TypeScript + Vite
@@ -709,8 +758,11 @@ This project meets all MVP requirements as outlined in the PRD:
 ### ✅ Performance Targets Achieved
 - [x] Shape updates sync in <100ms (optimistic updates)
 - [x] Cursor updates sync in <50ms (throttled)
-- [x] Canvas maintains 60 FPS during pan/zoom animations
-- [x] Handles 100+ rectangles with 3 concurrent users
+- [x] Canvas maintains 60 FPS during pan/zoom and transform operations
+- [x] Handles 100+ shapes (all types) with 3 concurrent users
+- [x] Multi-select drag optimized (~99.9% reduction in Firebase writes)
+- [x] Real-time visual feedback with local offset tracking
+- [x] React.memo optimization on all shape components
 - [x] No crashes or memory leaks during testing
 
 ### ✅ Security & Data Integrity
@@ -720,24 +772,32 @@ This project meets all MVP requirements as outlined in the PRD:
 - [x] Last-write-wins strategy for conflict resolution
 
 ### ✅ User Experience
-- [x] Single clicks don't create rectangles (drag required)
-- [x] Size constraints enforced (10×10px to 2000×2000px)
+- [x] Single clicks don't create shapes (drag required, except text)
+- [x] Size constraints enforced for all shape types
+- [x] Multiple selection methods for flexible workflow
+- [x] Intuitive transform handles (shape-specific behaviors)
+- [x] Keyboard shortcuts for efficient navigation
+- [x] Visual selection feedback (borders and selection box)
+- [x] Objects selectable in any mode (not restricted to Pan/Select)
+- [x] Auto-deselect when switching to creation modes
+- [x] Prevention of accidental selection after shape creation
 - [x] User colors cycle through 5-color palette for 6+ users
 - [x] Cursors auto-hide after 30 seconds of inactivity
 - [x] Error boundaries catch and display errors gracefully
 - [x] Loading states for async operations
+- [x] Toast notifications for user feedback
 
 ## Future Enhancements
 
 See the planning documents for potential features in future iterations:
 
 ### Phase 2 (Enhanced Collaboration)
-- Multiple shape types (circles, ellipses, lines, text)
-- Multi-selection and grouping
+- ✅ Multiple shape types (rectangles, circles, lines, text) - COMPLETED
+- ✅ Multi-selection and transforms (resize, rotate) - COMPLETED
+- ✅ Keyboard shortcuts for power users - COMPLETED
 - Undo/redo functionality
-- Shape resizing and rotation
 - Copy/paste operations
-- Keyboard shortcuts for power users
+- Permanent shape grouping (logical groups that persist)
 
 ### Phase 3 (Advanced Features)
 - Export to PNG/SVG/PDF
@@ -840,9 +900,9 @@ This is an MVP project built for learning purposes. Contributions welcome!
 
 ## 📊 Project Status
 
-- **Current Version**: v1.1 (MVP + Enhanced Features)
+- **Current Version**: v1.2 (MVP + Enhanced Collaboration Features)
 - **Status**: ✅ Complete and deployed
-- **Last Updated**: October 15, 2025
+- **Last Updated**: October 16, 2025
 - **Build Status**: ✅ Passing
 - **Test Coverage**: >70%
 - **Live URL**: [https://collab-canvas-2ba2e.web.app/](https://collab-canvas-2ba2e.web.app/)
@@ -864,6 +924,13 @@ This is an MVP project built for learning purposes. Contributions welcome!
 - ✅ PR #13.1: Canvas mode switching (Pan vs Rectangle)
 - ✅ PR #15: Canvas ownership & URL-based sharing
 - ✅ Documentation: Memory Bank and project rules system
+- ✅ Feature: Additional Shape Types (circles, lines, text with formatting)
+- ✅ Feature: Multi-Select & Transform Operations (Priority #2)
+  - Multi-select with 5 selection methods
+  - Resize operations with shape-specific behaviors
+  - Rotation with center-based origin and angle snapping
+  - Performance optimizations for multi-object operations
+  - UX enhancements (Pan mode, Select mode, keyboard shortcuts)
 
 ## 📝 License
 

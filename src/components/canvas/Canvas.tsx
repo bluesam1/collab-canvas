@@ -7,6 +7,7 @@ import { Line } from './Line';
 import { Text } from './Text';
 import { TextEditModal } from './TextEditModal';
 import { isRectangle, isCircle, isLine, isText } from '../../types';
+import type { Shape } from '../../types';
 import { Cursor } from './Cursor';
 import { useCanvas } from '../../hooks/useCanvas';
 import { usePresence } from '../../hooks/usePresence';
@@ -26,21 +27,30 @@ const MAX_RECT_SIZE = 2000;
 
 interface CanvasProps {
   selectedColor: string;
+  lineThickness: number;
   showInfo: boolean;
 }
 
-export function Canvas({ selectedColor, showInfo }: CanvasProps) {
+export function Canvas({ selectedColor, lineThickness, showInfo }: CanvasProps) {
   const stageRef = useRef<Konva.Stage>(null);
   const [stageSize, setStageSize] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
   const [stageScale, setStageScale] = useState(1);
   const [isPanning, setIsPanning] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [hasAutoFitted, setHasAutoFitted] = useState(false);
+  const [multiSelectDragStart, setMultiSelectDragStart] = useState<Map<string, { x: number; y: number }> | null>(null);
+  const [multiSelectDragOffset, setMultiSelectDragOffset] = useState<{ x: number; y: number } | null>(null);
 
   // Shape creation state
   const [isCreating, setIsCreating] = useState(false);
   const [newShapeStart, setNewShapeStart] = useState<{ x: number; y: number } | null>(null);
   const [newShapeEnd, setNewShapeEnd] = useState<{ x: number; y: number } | null>(null);
+  const justFinishedCreatingRef = useRef(false);
+
+  // Selection box state
+  const [selectionBoxStart, setSelectionBoxStart] = useState<{ x: number; y: number } | null>(null);
+  const [selectionBoxEnd, setSelectionBoxEnd] = useState<{ x: number; y: number } | null>(null);
 
   // Text modal state
   const [isTextModalOpen, setIsTextModalOpen] = useState(false);
@@ -55,7 +65,7 @@ export function Canvas({ selectedColor, showInfo }: CanvasProps) {
 
 
   // Canvas context and user context
-  const { objects, selectedIds, isLoading, mode, setMode, createObject, updateObject, selectObject, deleteObject } = useCanvas();
+  const { objects, selectedIds, isLoading, mode, setMode, createObject, updateObject, selectObject, selectMultiple, clearSelection, deleteSelected } = useCanvas();
   const { cursors, updateCursor } = usePresence();
   const authContext = useContext(UserContext);
 
@@ -72,6 +82,117 @@ export function Canvas({ selectedColor, showInfo }: CanvasProps) {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // Auto-fit canvas to show all objects on initial load
+  useEffect(() => {
+    if (!isLoading && !hasAutoFitted && objects.length > 0) {
+      setHasAutoFitted(true);
+
+      // Calculate visible canvas area (accounting for toolbar and header)
+      const toolbarWidth = 64; // w-16 = 64px
+      const headerHeight = 64; // Approximate header height
+      const visibleWidth = stageSize.width - toolbarWidth;
+      const visibleHeight = stageSize.height - headerHeight;
+
+      // Calculate bounding box of all objects
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+
+      objects.forEach((obj) => {
+        if (isRectangle(obj)) {
+          // Account for rotation by getting the bounding box
+          const centerX = obj.x + obj.width / 2;
+          const centerY = obj.y + obj.height / 2;
+          const rad = (obj.rotation * Math.PI) / 180;
+          const cos = Math.abs(Math.cos(rad));
+          const sin = Math.abs(Math.sin(rad));
+          const rotatedWidth = obj.width * cos + obj.height * sin;
+          const rotatedHeight = obj.width * sin + obj.height * cos;
+          
+          minX = Math.min(minX, centerX - rotatedWidth / 2);
+          minY = Math.min(minY, centerY - rotatedHeight / 2);
+          maxX = Math.max(maxX, centerX + rotatedWidth / 2);
+          maxY = Math.max(maxY, centerY + rotatedHeight / 2);
+        } else if (isCircle(obj)) {
+          minX = Math.min(minX, obj.centerX - obj.radius);
+          minY = Math.min(minY, obj.centerY - obj.radius);
+          maxX = Math.max(maxX, obj.centerX + obj.radius);
+          maxY = Math.max(maxY, obj.centerY + obj.radius);
+        } else if (isLine(obj)) {
+          // Lines are stored as x, y, width, rotation
+          const rad = (obj.rotation * Math.PI) / 180;
+          const endX = obj.x + obj.width * Math.cos(rad);
+          const endY = obj.y + obj.width * Math.sin(rad);
+          
+          minX = Math.min(minX, obj.x, endX);
+          minY = Math.min(minY, obj.y, endY);
+          maxX = Math.max(maxX, obj.x, endX);
+          maxY = Math.max(maxY, obj.y, endY);
+        } else if (isText(obj)) {
+          // Approximate text size (actual rendering may vary)
+          const textWidth = obj.text.length * obj.fontSize * 0.6;
+          const textHeight = obj.fontSize * 1.2;
+          
+          const centerX = obj.x + textWidth / 2;
+          const centerY = obj.y + textHeight / 2;
+          const rad = (obj.rotation * Math.PI) / 180;
+          const cos = Math.abs(Math.cos(rad));
+          const sin = Math.abs(Math.sin(rad));
+          const rotatedWidth = textWidth * cos + textHeight * sin;
+          const rotatedHeight = textWidth * sin + textHeight * cos;
+          
+          minX = Math.min(minX, centerX - rotatedWidth / 2);
+          minY = Math.min(minY, centerY - rotatedHeight / 2);
+          maxX = Math.max(maxX, centerX + rotatedWidth / 2);
+          maxY = Math.max(maxY, centerY + rotatedHeight / 2);
+        }
+      });
+
+      // Add generous padding around objects (10% of visible area or min 80px)
+      const paddingX = Math.max(visibleWidth * 0.1, 80);
+      const paddingY = Math.max(visibleHeight * 0.1, 80);
+      minX -= paddingX;
+      minY -= paddingY;
+      maxX += paddingX;
+      maxY += paddingY;
+
+      const contentWidth = maxX - minX;
+      const contentHeight = maxY - minY;
+      const contentCenterX = (minX + maxX) / 2;
+      const contentCenterY = (minY + maxY) / 2;
+
+      // Calculate scale to fit all objects (default to 1.0, only zoom out if necessary)
+      const scaleX = visibleWidth / contentWidth;
+      const scaleY = visibleHeight / contentHeight;
+      const newScale = Math.min(1, Math.min(scaleX, scaleY)); // Don't zoom in beyond 100%
+
+      // Calculate position to center the content in the visible area
+      // Account for toolbar on left and header on top
+      const visibleCenterX = toolbarWidth + visibleWidth / 2;
+      const visibleCenterY = headerHeight + visibleHeight / 2;
+      
+      const newX = visibleCenterX - contentCenterX * newScale;
+      const newY = visibleCenterY - contentCenterY * newScale;
+
+      setStageScale(newScale);
+      setStagePos({ x: newX, y: newY });
+    } else if (!isLoading && !hasAutoFitted && objects.length === 0) {
+      // No objects - center on canvas origin in the visible area
+      setHasAutoFitted(true);
+      const toolbarWidth = 64;
+      const headerHeight = 64;
+      const visibleWidth = stageSize.width - toolbarWidth;
+      const visibleHeight = stageSize.height - headerHeight;
+      
+      setStageScale(1);
+      setStagePos({ 
+        x: toolbarWidth + visibleWidth / 2, 
+        y: headerHeight + visibleHeight / 2 
+      });
+    }
+  }, [isLoading, hasAutoFitted, objects, stageSize]);
+
   // Cursor logic is handled by the Stage component
 
 
@@ -85,14 +206,22 @@ export function Canvas({ selectedColor, showInfo }: CanvasProps) {
       }
 
       if (e.key === 'Escape') {
-        selectObject(null);
+        clearSelection();
       } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.length > 0) {
-        // Delete the selected rectangle
+        // Delete all selected shapes
         e.preventDefault(); // Prevent browser back navigation on Backspace
-        deleteObject(selectedIds[0]);
+        deleteSelected();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+        // Ctrl/Cmd + A: Select all shapes
+        e.preventDefault();
+        const allShapeIds = objects.map(obj => obj.id);
+        selectMultiple(allShapeIds);
       } else if (e.key.toLowerCase() === 'v') {
         // Switch to Pan mode
         setMode('pan');
+      } else if (e.key.toLowerCase() === 's') {
+        // Switch to Select mode
+        setMode('select');
       } else if (e.key.toLowerCase() === 'r') {
         // Switch to Rectangle mode
         setMode('rectangle');
@@ -101,16 +230,19 @@ export function Canvas({ selectedColor, showInfo }: CanvasProps) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectObject, deleteObject, selectedIds, setMode]);
+  }, [clearSelection, deleteSelected, selectedIds, setMode, objects, selectMultiple]);
 
   // Handle mouse down for panning or rectangle creation
   const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    // Reset the flag on any new mouse down
+    justFinishedCreatingRef.current = false;
+    
     // If clicking on empty space (stage background)
     const clickedOnEmpty = e.target === e.target.getStage();
 
-    // Deselect when clicking on empty space (in any mode)
-    if (clickedOnEmpty) {
-      selectObject(null);
+    // Deselect when clicking on empty space (in any mode), unless Shift is held
+    if (clickedOnEmpty && !e.evt.shiftKey) {
+      clearSelection();
     }
 
     // Handle based on current mode
@@ -139,6 +271,10 @@ export function Canvas({ selectedColor, showInfo }: CanvasProps) {
             setEditingTextId(null);
             setTextModalKey(prev => prev + 1); // Force modal remount
             setIsTextModalOpen(true);
+          } else if (mode === 'select' && clickedOnEmpty) {
+            // Select mode: Start selection box only on empty space
+            setSelectionBoxStart(worldPos);
+            setSelectionBoxEnd(worldPos);
           } else if (mode === 'pan' && clickedOnEmpty) {
             // Pan mode: Start panning only on empty space
             setIsPanning(true);
@@ -209,6 +345,18 @@ export function Canvas({ selectedColor, showInfo }: CanvasProps) {
           setNewShapeEnd(worldPos);
         }
       }
+    } else if (selectionBoxStart) {
+      // Update selection box end position
+      if (stage) {
+        const pos = stage.getPointerPosition();
+        if (pos) {
+          const worldPos = {
+            x: (pos.x - stage.x()) / stage.scaleX(),
+            y: (pos.y - stage.y()) / stage.scaleY(),
+          };
+          setSelectionBoxEnd(worldPos);
+        }
+      }
     }
   };
 
@@ -239,8 +387,12 @@ export function Canvas({ selectedColor, showInfo }: CanvasProps) {
               width: constrainedWidth,
               height: constrainedHeight,
               fill: selectedColor,
+              rotation: 0,
               createdBy: authContext.user.uid,
             });
+            
+            // Mark that we just created a shape to prevent selecting underlying shapes
+            justFinishedCreatingRef.current = true;
           }
         } else if (mode === 'circle') {
           // Calculate circle center and radius
@@ -261,8 +413,12 @@ export function Canvas({ selectedColor, showInfo }: CanvasProps) {
               centerY,
               radius: constrainedRadius,
               fill: selectedColor,
+              rotation: 0,
               createdBy: authContext.user.uid,
             });
+            
+            // Mark that we just created a shape to prevent selecting underlying shapes
+            justFinishedCreatingRef.current = true;
           }
         } else if (mode === 'line') {
           // Calculate line length
@@ -276,21 +432,24 @@ export function Canvas({ selectedColor, showInfo }: CanvasProps) {
             const maxLength = 5000;
             const constrainedLength = Math.min(length, maxLength);
             
-            // Calculate constrained end point
-            const angle = Math.atan2(newShapeEnd.y - newShapeStart.y, newShapeEnd.x - newShapeStart.x);
-            const constrainedEndX = newShapeStart.x + Math.cos(angle) * constrainedLength;
-            const constrainedEndY = newShapeStart.y + Math.sin(angle) * constrainedLength;
+            // Calculate angle in degrees for rotation
+            const angleRadians = Math.atan2(newShapeEnd.y - newShapeStart.y, newShapeEnd.x - newShapeStart.x);
+            const angleDegrees = (angleRadians * 180) / Math.PI;
 
             createObject({
               type: 'line',
-              x1: newShapeStart.x,
-              y1: newShapeStart.y,
-              x2: constrainedEndX,
-              y2: constrainedEndY,
+              x: newShapeStart.x,
+              y: newShapeStart.y,
+              width: constrainedLength,
+              height: 0,
               stroke: selectedColor,
-              strokeWidth: 4,
+              strokeWidth: lineThickness,
+              rotation: angleDegrees,
               createdBy: authContext.user.uid,
             });
+            
+            // Mark that we just created a shape to prevent selecting underlying shapes
+            justFinishedCreatingRef.current = true;
           }
         }
       }
@@ -299,11 +458,99 @@ export function Canvas({ selectedColor, showInfo }: CanvasProps) {
       setIsCreating(false);
       setNewShapeStart(null);
       setNewShapeEnd(null);
+    } else if (selectionBoxStart && selectionBoxEnd) {
+      // Selection box: Select all shapes completely within the box
+      const minX = Math.min(selectionBoxStart.x, selectionBoxEnd.x);
+      const maxX = Math.max(selectionBoxStart.x, selectionBoxEnd.x);
+      const minY = Math.min(selectionBoxStart.y, selectionBoxEnd.y);
+      const maxY = Math.max(selectionBoxStart.y, selectionBoxEnd.y);
+      
+      // Find all shapes completely within the selection box
+      const selectedShapeIds: string[] = [];
+      
+      objects.forEach((shape) => {
+        let isCompletelyWithin = false;
+        
+        if (isRectangle(shape)) {
+          // For rectangles, check if all corners are within bounds (accounting for rotation)
+          const centerX = shape.x + shape.width / 2;
+          const centerY = shape.y + shape.height / 2;
+          const rad = (shape.rotation * Math.PI) / 180;
+          
+          // Calculate rotated corners
+          const corners = [
+            { x: -shape.width / 2, y: -shape.height / 2 },
+            { x: shape.width / 2, y: -shape.height / 2 },
+            { x: shape.width / 2, y: shape.height / 2 },
+            { x: -shape.width / 2, y: shape.height / 2 },
+          ].map(corner => ({
+            x: centerX + corner.x * Math.cos(rad) - corner.y * Math.sin(rad),
+            y: centerY + corner.x * Math.sin(rad) + corner.y * Math.cos(rad),
+          }));
+          
+          isCompletelyWithin = corners.every(
+            corner => corner.x >= minX && corner.x <= maxX && corner.y >= minY && corner.y <= maxY
+          );
+        } else if (isCircle(shape)) {
+          // For circles, check if the entire circle (center +/- radius) is within bounds
+          isCompletelyWithin =
+            shape.centerX - shape.radius >= minX &&
+            shape.centerX + shape.radius <= maxX &&
+            shape.centerY - shape.radius >= minY &&
+            shape.centerY + shape.radius <= maxY;
+        } else if (isLine(shape)) {
+          // For lines, check if both endpoints are within bounds
+          const rad = (shape.rotation * Math.PI) / 180;
+          const endX = shape.x + shape.width * Math.cos(rad);
+          const endY = shape.y + shape.width * Math.sin(rad);
+          
+          isCompletelyWithin =
+            shape.x >= minX && shape.x <= maxX && shape.y >= minY && shape.y <= maxY &&
+            endX >= minX && endX <= maxX && endY >= minY && endY <= maxY;
+        } else if (isText(shape)) {
+          // For text, check if all corners are within bounds (accounting for rotation)
+          const textWidth = shape.text.length * shape.fontSize * 0.6;
+          const textHeight = shape.fontSize * 1.2;
+          const centerX = shape.x + textWidth / 2;
+          const centerY = shape.y + textHeight / 2;
+          const rad = (shape.rotation * Math.PI) / 180;
+          
+          // Calculate rotated corners
+          const corners = [
+            { x: -textWidth / 2, y: -textHeight / 2 },
+            { x: textWidth / 2, y: -textHeight / 2 },
+            { x: textWidth / 2, y: textHeight / 2 },
+            { x: -textWidth / 2, y: textHeight / 2 },
+          ].map(corner => ({
+            x: centerX + corner.x * Math.cos(rad) - corner.y * Math.sin(rad),
+            y: centerY + corner.x * Math.sin(rad) + corner.y * Math.cos(rad),
+          }));
+          
+          isCompletelyWithin = corners.every(
+            corner => corner.x >= minX && corner.x <= maxX && corner.y >= minY && corner.y <= maxY
+          );
+        }
+        
+        if (isCompletelyWithin) {
+          selectedShapeIds.push(shape.id);
+        }
+      });
+      
+      // Select the shapes
+      if (selectedShapeIds.length > 0) {
+        selectMultiple(selectedShapeIds);
+      }
+      
+      // Reset selection box
+      setSelectionBoxStart(null);
+      setSelectionBoxEnd(null);
     } else {
       // If no drag occurred, just reset
       setIsCreating(false);
       setNewShapeStart(null);
       setNewShapeEnd(null);
+      setSelectionBoxStart(null);
+      setSelectionBoxEnd(null);
     }
   };
 
@@ -386,37 +633,244 @@ export function Canvas({ selectedColor, showInfo }: CanvasProps) {
     return lines;
   };
 
-  // Handle rectangle selection
-  const handleRectangleClick = (id: string) => {
-    selectObject(id);
+  // Handle shape selection (supports Shift+click for multi-select)
+  const handleShapeClick = (id: string, shiftKey: boolean = false) => {
+    // Prevent selecting underlying shapes immediately after creating a shape
+    if (justFinishedCreatingRef.current) {
+      justFinishedCreatingRef.current = false;
+      return;
+    }
+    
+    selectObject(id, shiftKey);
   };
 
   // Handle rectangle drag move
-  const handleRectangleDragMove = (x: number, y: number) => {
+  const handleRectangleDragMove = (id: string, x: number, y: number) => {
     updateCursor({ x, y });
+    
+    // For multi-select, track the drag offset for real-time visual feedback
+    if (selectedIds.length > 1 && multiSelectDragStart) {
+      const originalPos = multiSelectDragStart.get(id);
+      if (originalPos) {
+        const offsetX = x - originalPos.x;
+        const offsetY = y - originalPos.y;
+        
+        // Update the drag offset for real-time rendering
+        setMultiSelectDragOffset({ x: offsetX, y: offsetY });
+      }
+    }
+  };
+
+  // Handle drag start for multi-select
+  const handleDragStart = (_id: string) => {
+    if (selectedIds.length > 1) {
+      // Capture initial positions of all selected shapes
+      const initialPositions = new Map<string, { x: number; y: number }>();
+      selectedIds.forEach(selectedId => {
+        const shape = objects.find(obj => obj.id === selectedId);
+        if (shape) {
+          if (isRectangle(shape) || isText(shape)) {
+            initialPositions.set(selectedId, { x: shape.x, y: shape.y });
+          } else if (isCircle(shape)) {
+            initialPositions.set(selectedId, { x: shape.centerX, y: shape.centerY });
+          } else if (isLine(shape)) {
+            initialPositions.set(selectedId, { x: shape.x, y: shape.y });
+          }
+        }
+      });
+      setMultiSelectDragStart(initialPositions);
+    }
   };
 
   // Handle rectangle drag end
   const handleRectangleDragEnd = (id: string, x: number, y: number) => {
-    updateObject(id, { x, y });
+    if (selectedIds.length > 1 && multiSelectDragStart) {
+      // Multi-select: commit final positions for all selected shapes
+      const originalPos = multiSelectDragStart.get(id);
+      if (originalPos) {
+        const offsetX = x - originalPos.x;
+        const offsetY = y - originalPos.y;
+
+        // Batch commit all final positions to Firebase
+        selectedIds.forEach(selectedId => {
+          const initialPos = multiSelectDragStart.get(selectedId);
+          if (initialPos) {
+            const shape = objects.find(obj => obj.id === selectedId);
+            if (shape) {
+              if (isRectangle(shape) || isText(shape)) {
+                updateObject(selectedId, {
+                  x: initialPos.x + offsetX,
+                  y: initialPos.y + offsetY,
+                });
+              } else if (isCircle(shape)) {
+                updateObject(selectedId, {
+                  centerX: initialPos.x + offsetX,
+                  centerY: initialPos.y + offsetY,
+                });
+              } else if (isLine(shape)) {
+                updateObject(selectedId, {
+                  x: initialPos.x + offsetX,
+                  y: initialPos.y + offsetY,
+                });
+              }
+            }
+          }
+        });
+      }
+      // Clear drag state
+      setMultiSelectDragStart(null);
+      setMultiSelectDragOffset(null);
+    } else {
+      // Single select: update this shape
+      updateObject(id, { x, y });
+    }
   };
 
-  // Handle line drag end
-  const handleLineDragEnd = (id: string, x1: number, y1: number, x2: number, y2: number) => {
-    updateObject(id, { x1, y1, x2, y2 });
+  // Handle circle drag end
+  const handleCircleDragEnd = (id: string, centerX: number, centerY: number) => {
+    if (selectedIds.length > 1 && multiSelectDragStart) {
+      // Multi-select: commit final positions for all selected shapes
+      const originalPos = multiSelectDragStart.get(id);
+      if (originalPos) {
+        const offsetX = centerX - originalPos.x;
+        const offsetY = centerY - originalPos.y;
+
+        // Batch commit all final positions to Firebase
+        selectedIds.forEach(selectedId => {
+          const initialPos = multiSelectDragStart.get(selectedId);
+          if (initialPos) {
+            const shape = objects.find(obj => obj.id === selectedId);
+            if (shape) {
+              if (isRectangle(shape) || isText(shape)) {
+                updateObject(selectedId, {
+                  x: initialPos.x + offsetX,
+                  y: initialPos.y + offsetY,
+                });
+              } else if (isCircle(shape)) {
+                updateObject(selectedId, {
+                  centerX: initialPos.x + offsetX,
+                  centerY: initialPos.y + offsetY,
+                });
+              } else if (isLine(shape)) {
+                updateObject(selectedId, {
+                  x: initialPos.x + offsetX,
+                  y: initialPos.y + offsetY,
+                });
+              }
+            }
+          }
+        });
+      }
+      // Clear drag state
+      setMultiSelectDragStart(null);
+      setMultiSelectDragOffset(null);
+    } else {
+      // Single select: update this shape
+      updateObject(id, { centerX, centerY });
+    }
+  };
+
+  // Handle shape transform (resize/rotate, and also drag end for lines)
+  const handleShapeTransform = (id: string, updates: Partial<Shape>) => {
+    // Check if this is a line drag (only x, y updates) when multiple shapes are selected
+    if (selectedIds.length > 1 && multiSelectDragStart && 'x' in updates && 'y' in updates && Object.keys(updates).length === 2) {
+      // This is a line being dragged in multi-select
+      const originalPos = multiSelectDragStart.get(id);
+      if (originalPos) {
+        const offsetX = updates.x! - originalPos.x;
+        const offsetY = updates.y! - originalPos.y;
+
+        // Batch commit all final positions to Firebase
+        selectedIds.forEach(selectedId => {
+          const initialPos = multiSelectDragStart.get(selectedId);
+          if (initialPos) {
+            const shape = objects.find(obj => obj.id === selectedId);
+            if (shape) {
+              if (isRectangle(shape) || isText(shape)) {
+                updateObject(selectedId, {
+                  x: initialPos.x + offsetX,
+                  y: initialPos.y + offsetY,
+                });
+              } else if (isCircle(shape)) {
+                updateObject(selectedId, {
+                  centerX: initialPos.x + offsetX,
+                  centerY: initialPos.y + offsetY,
+                });
+              } else if (isLine(shape)) {
+                updateObject(selectedId, {
+                  x: initialPos.x + offsetX,
+                  y: initialPos.y + offsetY,
+                });
+              }
+            }
+          }
+        });
+      }
+      // Clear drag state
+      setMultiSelectDragStart(null);
+      setMultiSelectDragOffset(null);
+    } else {
+      // Single select or actual transform (not drag)
+      updateObject(id, updates);
+    }
   };
 
   // Handle text drag end
   const handleTextDragEnd = (id: string, x: number, y: number) => {
-    updateObject(id, { x, y });
+    if (selectedIds.length > 1 && multiSelectDragStart) {
+      // Multi-select: commit final positions for all selected shapes
+      const originalPos = multiSelectDragStart.get(id);
+      if (originalPos) {
+        const offsetX = x - originalPos.x;
+        const offsetY = y - originalPos.y;
+
+        // Batch commit all final positions to Firebase
+        selectedIds.forEach(selectedId => {
+          const initialPos = multiSelectDragStart.get(selectedId);
+          if (initialPos) {
+            const shape = objects.find(obj => obj.id === selectedId);
+            if (shape) {
+              if (isRectangle(shape) || isText(shape)) {
+                updateObject(selectedId, {
+                  x: initialPos.x + offsetX,
+                  y: initialPos.y + offsetY,
+                });
+              } else if (isCircle(shape)) {
+                updateObject(selectedId, {
+                  centerX: initialPos.x + offsetX,
+                  centerY: initialPos.y + offsetY,
+                });
+              } else if (isLine(shape)) {
+                updateObject(selectedId, {
+                  x: initialPos.x + offsetX,
+                  y: initialPos.y + offsetY,
+                });
+              }
+            }
+          }
+        });
+      }
+      // Clear drag state
+      setMultiSelectDragStart(null);
+      setMultiSelectDragOffset(null);
+    } else {
+      // Single select: update this shape
+      updateObject(id, { x, y });
+    }
   };
 
   // Handle text click - select first, then open modal for editing
-  const handleTextClick = (id: string) => {
+  const handleTextClick = (id: string, shiftKey: boolean = false) => {
+    // Prevent selecting underlying shapes immediately after creating a shape
+    if (justFinishedCreatingRef.current) {
+      justFinishedCreatingRef.current = false;
+      return;
+    }
+    
     const textObject = objects.find(obj => obj.id === id && isText(obj));
     if (textObject && isText(textObject)) {
-      if (selectedIds.includes(id)) {
-        // If already selected, open edit modal
+      if (selectedIds.includes(id) && !shiftKey) {
+        // If already selected and not shift-clicking, open edit modal
         setEditingTextId(id);
         setTextModalValue(textObject.text);
         setTextModalFontSize(textObject.fontSize || 16);
@@ -425,8 +879,8 @@ export function Canvas({ selectedColor, showInfo }: CanvasProps) {
         setTextModalUnderline(textObject.underline || false);
         setIsTextModalOpen(true);
       } else {
-        // If not selected, just select it
-        selectObject(id);
+        // If not selected, or shift-clicking, just select it
+        selectObject(id, shiftKey);
       }
     }
   };
@@ -450,6 +904,7 @@ export function Canvas({ selectedColor, showInfo }: CanvasProps) {
         text,
         fontSize,
         fill: selectedColor,
+        rotation: 0,
         bold,
         italic,
         underline,
@@ -522,15 +977,13 @@ export function Canvas({ selectedColor, showInfo }: CanvasProps) {
       const constrainedLength = Math.min(length, maxLength);
       
       const angle = Math.atan2(newShapeEnd.y - newShapeStart.y, newShapeEnd.x - newShapeStart.x);
-      const constrainedEndX = newShapeStart.x + Math.cos(angle) * constrainedLength;
-      const constrainedEndY = newShapeStart.y + Math.sin(angle) * constrainedLength;
 
       return { 
         type: 'line', 
-        x1: newShapeStart.x, 
-        y1: newShapeStart.y, 
-        x2: constrainedEndX, 
-        y2: constrainedEndY 
+        x: newShapeStart.x, 
+        y: newShapeStart.y, 
+        width: constrainedLength,
+        rotation: (angle * 180) / Math.PI
       };
     }
 
@@ -583,17 +1036,19 @@ export function Canvas({ selectedColor, showInfo }: CanvasProps) {
 
         {/* Objects layer */}
         <Layer>
-          {/* Render existing shapes */}
-          {objects.map((shape) => {
+          {/* Render unselected shapes first */}
+          {objects.filter(shape => !selectedIds.includes(shape.id)).map((shape) => {
             if (isRectangle(shape)) {
               return (
                 <Rectangle
                   key={shape.id}
                   rectangle={shape}
-                  isSelected={selectedIds.includes(shape.id)}
-                  onClick={handleRectangleClick}
+                  isSelected={false}
+                  onClick={handleShapeClick}
+                  onDragStart={handleDragStart}
                   onDragMove={handleRectangleDragMove}
                   onDragEnd={handleRectangleDragEnd}
+                  onTransform={handleShapeTransform}
                   mode={mode}
                 />
               );
@@ -602,10 +1057,12 @@ export function Canvas({ selectedColor, showInfo }: CanvasProps) {
                 <Circle
                   key={shape.id}
                   circle={shape}
-                  isSelected={selectedIds.includes(shape.id)}
-                  onClick={handleRectangleClick}
+                  isSelected={false}
+                  onClick={handleShapeClick}
+                  onDragStart={handleDragStart}
                   onDragMove={handleRectangleDragMove}
-                  onDragEnd={handleRectangleDragEnd}
+                  onDragEnd={handleCircleDragEnd}
+                  onTransform={handleShapeTransform}
                   mode={mode}
                 />
               );
@@ -614,10 +1071,11 @@ export function Canvas({ selectedColor, showInfo }: CanvasProps) {
                 <Line
                   key={shape.id}
                   line={shape}
-                  isSelected={selectedIds.includes(shape.id)}
-                  onClick={(id) => handleRectangleClick(id)}
-                  onDragMove={(x, y) => handleRectangleDragMove(x, y)}
-                  onDragEnd={(id, x1, y1, x2, y2) => handleLineDragEnd(id, x1, y1, x2, y2)}
+                  isSelected={false}
+                  onClick={(id, shiftKey) => handleShapeClick(id, shiftKey)}
+                  onDragStart={handleDragStart}
+                  onDragMove={(id, x, y) => handleRectangleDragMove(id, x, y)}
+                  onTransform={handleShapeTransform}
                   mode={mode}
                 />
               );
@@ -626,12 +1084,110 @@ export function Canvas({ selectedColor, showInfo }: CanvasProps) {
                 <Text
                   key={shape.id}
                   text={shape}
-                  isSelected={selectedIds.includes(shape.id)}
-                  onClick={(id) => handleTextClick(id)}
-                  onDragMove={(x, y) => handleRectangleDragMove(x, y)}
+                  isSelected={false}
+                  onClick={handleTextClick}
+                  onDragStart={handleDragStart}
+                  onDragMove={(id, x, y) => handleRectangleDragMove(id, x, y)}
                   onDragEnd={(id, x, y) => handleTextDragEnd(id, x, y)}
                   onTextChange={handleTextChange}
+                  onTransform={handleShapeTransform}
                   mode={mode}
+                />
+              );
+            }
+            return null;
+          })}
+
+          {/* Render selected shapes last (transformers will be on top) */}
+          {objects.filter(shape => selectedIds.includes(shape.id)).map((shape) => {
+            // Only show transformers when a single shape is selected
+            const showTransformer = selectedIds.length === 1;
+            
+            // Apply multi-select drag offset for real-time visual feedback
+            let adjustedShape = shape;
+            if (multiSelectDragOffset && multiSelectDragStart && selectedIds.length > 1) {
+              const initialPos = multiSelectDragStart.get(shape.id);
+              if (initialPos) {
+                if (isRectangle(shape) || isText(shape)) {
+                  adjustedShape = {
+                    ...shape,
+                    x: initialPos.x + multiSelectDragOffset.x,
+                    y: initialPos.y + multiSelectDragOffset.y,
+                  };
+                } else if (isCircle(shape)) {
+                  adjustedShape = {
+                    ...shape,
+                    centerX: initialPos.x + multiSelectDragOffset.x,
+                    centerY: initialPos.y + multiSelectDragOffset.y,
+                  };
+                } else if (isLine(shape)) {
+                  adjustedShape = {
+                    ...shape,
+                    x: initialPos.x + multiSelectDragOffset.x,
+                    y: initialPos.y + multiSelectDragOffset.y,
+                  };
+                }
+              }
+            }
+            
+            if (isRectangle(adjustedShape)) {
+              return (
+                <Rectangle
+                  key={shape.id}
+                  rectangle={adjustedShape}
+                  isSelected={true}
+                  onClick={handleShapeClick}
+                  onDragStart={handleDragStart}
+                  onDragMove={handleRectangleDragMove}
+                  onDragEnd={handleRectangleDragEnd}
+                  onTransform={handleShapeTransform}
+                  mode={mode}
+                  showTransformer={showTransformer}
+                />
+              );
+            } else if (isCircle(adjustedShape)) {
+              return (
+                <Circle
+                  key={shape.id}
+                  circle={adjustedShape}
+                  isSelected={true}
+                  onClick={handleShapeClick}
+                  onDragStart={handleDragStart}
+                  onDragMove={handleRectangleDragMove}
+                  onDragEnd={handleCircleDragEnd}
+                  onTransform={handleShapeTransform}
+                  mode={mode}
+                  showTransformer={showTransformer}
+                />
+              );
+            } else if (isLine(adjustedShape)) {
+              return (
+                <Line
+                  key={shape.id}
+                  line={adjustedShape}
+                  isSelected={true}
+                  onClick={(id, shiftKey) => handleShapeClick(id, shiftKey)}
+                  onDragStart={handleDragStart}
+                  onDragMove={(id, x, y) => handleRectangleDragMove(id, x, y)}
+                  onTransform={handleShapeTransform}
+                  mode={mode}
+                  showTransformer={showTransformer}
+                />
+              );
+            } else if (isText(adjustedShape)) {
+              return (
+                <Text
+                  key={shape.id}
+                  text={adjustedShape}
+                  isSelected={true}
+                  onClick={handleTextClick}
+                  onDragStart={handleDragStart}
+                  onDragMove={(id, x, y) => handleRectangleDragMove(id, x, y)}
+                  onDragEnd={(id, x, y) => handleTextDragEnd(id, x, y)}
+                  onTextChange={handleTextChange}
+                  onTransform={handleShapeTransform}
+                  mode={mode}
+                  showTransformer={showTransformer}
                 />
               );
             }
@@ -668,22 +1224,39 @@ export function Canvas({ selectedColor, showInfo }: CanvasProps) {
                   listening={false}
                 />
               )}
-              {previewShape.type === 'line' && 'x1' in previewShape && (
+              {previewShape.type === 'line' && 'x' in previewShape && newShapeStart && newShapeEnd && (
                 <KonvaLine
                   points={[
-                    (previewShape as any).x1, 
-                    (previewShape as any).y1, 
-                    (previewShape as any).x2, 
-                    (previewShape as any).y2
+                    newShapeStart.x,
+                    newShapeStart.y,
+                    newShapeEnd.x,
+                    newShapeEnd.y
                   ]}
                   stroke={selectedColor}
-                  strokeWidth={2}
+                  strokeWidth={lineThickness}
                   opacity={0.5}
                   dash={[10, 5]}
                   listening={false}
+                  lineCap="round"
+                  lineJoin="round"
                 />
               )}
             </>
+          )}
+
+          {/* Selection box */}
+          {selectionBoxStart && selectionBoxEnd && (
+            <Rect
+              x={Math.min(selectionBoxStart.x, selectionBoxEnd.x)}
+              y={Math.min(selectionBoxStart.y, selectionBoxEnd.y)}
+              width={Math.abs(selectionBoxEnd.x - selectionBoxStart.x)}
+              height={Math.abs(selectionBoxEnd.y - selectionBoxStart.y)}
+              fill="rgba(59, 130, 246, 0.1)"
+              stroke="#3B82F6"
+              strokeWidth={1}
+              dash={[5, 5]}
+              listening={false}
+            />
           )}
         </Layer>
 
@@ -724,14 +1297,16 @@ export function Canvas({ selectedColor, showInfo }: CanvasProps) {
             )}
             <div>
               <span className="font-semibold">Mode:</span>{' '}
-              {mode === 'pan' ? '👆 Navigation' : mode === 'rectangle' ? '⬛ Rectangle' : mode === 'circle' ? '⭕ Circle' : mode === 'line' ? '➖ Line' : mode === 'text' ? '📝 Text' : mode}
+              {mode === 'pan' ? '✋ Pan' : mode === 'select' ? '🔲 Multi-Select' : mode === 'rectangle' ? '⬛ Rectangle' : mode === 'circle' ? '⭕ Circle' : mode === 'line' ? '➖ Line' : mode === 'text' ? '📝 Text' : mode}
             </div>
             <div className="text-xs text-gray-600 mt-1">
               {mode === 'pan' 
-                ? 'Click & drag to navigate'
+                ? 'Click & drag to pan the canvas'
+                : mode === 'select'
+                ? 'Click & drag to select multiple objects'
                 : mode === 'text'
-                ? 'Click to add text'
-                : 'Click & drag to create'
+                ? 'Click to add text • Click objects to select'
+                : 'Click & drag to create • Click objects to select'
               }
             </div>
           </div>

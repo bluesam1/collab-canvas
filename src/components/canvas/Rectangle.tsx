@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, memo } from 'react';
 import { Rect, Transformer } from 'react-konva';
 import Konva from 'konva';
 import type { Rectangle as RectangleType, CanvasMode } from '../../types';
@@ -6,13 +6,16 @@ import type { Rectangle as RectangleType, CanvasMode } from '../../types';
 interface RectangleProps {
   rectangle: RectangleType;
   isSelected: boolean;
-  onClick: (id: string) => void;
+  onClick: (id: string, shiftKey?: boolean) => void;
+  onDragStart?: (id: string) => void;
   onDragEnd: (id: string, x: number, y: number) => void;
-  onDragMove?: (x: number, y: number) => void;
+  onDragMove?: (id: string, x: number, y: number) => void;
+  onTransform?: (id: string, updates: Partial<RectangleType>) => void;
   mode: CanvasMode;
+  showTransformer?: boolean;
 }
 
-export function Rectangle({ rectangle, isSelected, onClick, onDragEnd, onDragMove, mode }: RectangleProps) {
+export const Rectangle = memo(function Rectangle({ rectangle, isSelected, onClick, onDragStart, onDragEnd, onDragMove, onTransform, mode, showTransformer = true }: RectangleProps) {
   const rectRef = useRef<Konva.Rect>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   const [isHovered, setIsHovered] = useState(false);
@@ -25,44 +28,96 @@ export function Rectangle({ rectangle, isSelected, onClick, onDragEnd, onDragMov
     }
   }, [isSelected]);
 
+  // Handle transform end (resize/rotate)
+  const handleTransformEnd = () => {
+    const node = rectRef.current;
+    if (node && onTransform) {
+      const scaleX = node.scaleX();
+      const scaleY = node.scaleY();
+      
+      // Calculate new dimensions
+      const newWidth = Math.max(5, node.width() * scaleX);
+      const newHeight = Math.max(5, node.height() * scaleY);
+      
+      // Reset scale
+      node.scaleX(1);
+      node.scaleY(1);
+      
+      // Get rotation and normalize to 0-360
+      let rotation = node.rotation() % 360;
+      if (rotation < 0) rotation += 360;
+      
+      // Convert from center position back to top-left
+      const centerX = node.x();
+      const centerY = node.y();
+      const topLeftX = centerX - newWidth / 2;
+      const topLeftY = centerY - newHeight / 2;
+      
+      onTransform(rectangle.id, {
+        x: topLeftX,
+        y: topLeftY,
+        width: newWidth,
+        height: newHeight,
+        rotation: rotation,
+      });
+    }
+  };
+
+  // Handle rotation with angle snapping
+  const handleTransform = (e: Konva.KonvaEventObject<Event>) => {
+    const node = rectRef.current;
+    const transformer = transformerRef.current;
+    
+    if (node && transformer) {
+      // Check if Shift key is pressed for smooth rotation
+      const isShiftPressed = e.evt && 'shiftKey' in e.evt && e.evt.shiftKey;
+      
+      if (!isShiftPressed) {
+        // Snap rotation to 15° increments
+        const rotation = node.rotation();
+        const snappedRotation = Math.round(rotation / 15) * 15;
+        node.rotation(snappedRotation);
+      }
+    }
+  };
+
   const handleClick = (e: Konva.KonvaEventObject<MouseEvent>) => {
-    // Only allow selection in pan mode
-    // In creation modes, let the event bubble to the stage so users can draw over existing shapes
-    if (mode === 'pan') {
-      e.cancelBubble = true; // Prevent event from bubbling to stage
-      onClick(rectangle.id);
+    // Allow selection in any mode
+    e.cancelBubble = true; // Prevent event from bubbling to stage
+    onClick(rectangle.id, e.evt.shiftKey);
+  };
+
+  const handleDragStartEvent = () => {
+    if (onDragStart) {
+      onDragStart(rectangle.id);
     }
   };
 
   const handleDragMove = (e: Konva.KonvaEventObject<DragEvent>) => {
     if (onDragMove) {
-      // Get the stage to access pointer position
-      const stage = e.target.getStage();
-      if (stage) {
-        const pointerPos = stage.getPointerPosition();
-        if (pointerPos) {
-          // Convert to world coordinates
-          const worldPos = {
-            x: (pointerPos.x - stage.x()) / stage.scaleX(),
-            y: (pointerPos.y - stage.y()) / stage.scaleY(),
-          };
-          onDragMove(worldPos.x, worldPos.y);
-        }
-      }
+      // Convert from center position to top-left during drag
+      const centerX = e.target.x();
+      const centerY = e.target.y();
+      const topLeftX = centerX - rectangle.width / 2;
+      const topLeftY = centerY - rectangle.height / 2;
+      
+      onDragMove(rectangle.id, topLeftX, topLeftY);
     }
   };
 
   const handleDragEnd = (e: Konva.KonvaEventObject<DragEvent>) => {
-    onDragEnd(rectangle.id, e.target.x(), e.target.y());
+    // Convert from center position back to top-left
+    const centerX = e.target.x();
+    const centerY = e.target.y();
+    const topLeftX = centerX - rectangle.width / 2;
+    const topLeftY = centerY - rectangle.height / 2;
+    onDragEnd(rectangle.id, topLeftX, topLeftY);
   };
 
   const handleMouseEnter = (e: Konva.KonvaEventObject<MouseEvent>) => {
     const container = e.target.getStage()?.container();
     if (container) {
-      // Only show pointer cursor if not in object creation mode
-      if (mode === 'pan') {
-        container.style.cursor = 'pointer';
-      }
+      container.style.cursor = 'pointer';
     }
     setIsHovered(true);
   };
@@ -85,16 +140,20 @@ export function Rectangle({ rectangle, isSelected, onClick, onDragEnd, onDragMov
       <Rect
         ref={rectRef}
         id={rectangle.id}
-        x={rectangle.x}
-        y={rectangle.y}
+        x={rectangle.x + rectangle.width / 2}
+        y={rectangle.y + rectangle.height / 2}
         width={rectangle.width}
         height={rectangle.height}
         fill={rectangle.fill}
-        stroke={isSelected ? '#000000' : undefined}
+        rotation={rectangle.rotation || 0}
+        offsetX={rectangle.width / 2}
+        offsetY={rectangle.height / 2}
+        stroke={isSelected ? '#3B82F6' : undefined}
         strokeWidth={isSelected ? 2 : 0}
         draggable={isSelected}
         onClick={handleClick}
         onTap={handleClick}
+        onDragStart={handleDragStartEvent}
         onDragMove={handleDragMove}
         onDragEnd={handleDragEnd}
         onMouseEnter={handleMouseEnter}
@@ -108,16 +167,22 @@ export function Rectangle({ rectangle, isSelected, onClick, onDragEnd, onDragMov
       {isSelected && (
         <Transformer
           ref={transformerRef}
-          borderEnabled={false}
+          borderEnabled={true}
+          borderStroke="#3B82F6"
+          borderStrokeWidth={2}
           anchorSize={8}
-          anchorStroke="#000000"
+          anchorStroke="#3B82F6"
           anchorFill="#ffffff"
           anchorCornerRadius={2}
-          enabledAnchors={[]}
-          rotateEnabled={false}
+          enabledAnchors={showTransformer ? ['top-left', 'top-center', 'top-right', 'middle-right', 'middle-left', 'bottom-left', 'bottom-center', 'bottom-right'] : []}
+          rotateEnabled={showTransformer}
+          rotateAnchorOffset={20}
+          keepRatio={false}
+          onTransform={handleTransform}
+          onTransformEnd={handleTransformEnd}
         />
       )}
     </>
   );
-}
+});
 

@@ -1,79 +1,126 @@
 import { useRef, useEffect, memo, useState } from 'react';
-import { Line as KonvaLine, Transformer } from 'react-konva';
+import { Line as KonvaLine, Circle } from 'react-konva';
 import Konva from 'konva';
 import type { Line as LineType, CanvasMode } from '../../types';
 
 interface LineProps {
   line: LineType;
   isSelected: boolean;
-  onClick: (id: string) => void;
-  onDragEnd: (id: string, x1: number, y1: number, x2: number, y2: number) => void;
-  onDragMove?: (x: number, y: number) => void;
+  onClick: (id: string, shiftKey?: boolean) => void;
+  onDragStart?: (id: string) => void;
+  onDragMove?: (id: string, x: number, y: number) => void;
+  onTransform?: (id: string, updates: Partial<LineType>) => void;
   mode: CanvasMode;
+  showTransformer?: boolean;
 }
 
 export const Line = memo(function Line({ 
   line, 
   isSelected, 
   onClick, 
-  onDragMove, 
-  onDragEnd, 
-  mode 
+  onDragStart,
+  onDragMove,
+  onTransform, 
+  mode,
+  showTransformer = true
 }: LineProps) {
   const lineRef = useRef<Konva.Line>(null);
-  const transformerRef = useRef<Konva.Transformer>(null);
   const [isHovered, setIsHovered] = useState(false);
+  const [isDraggingEndpoint, setIsDraggingEndpoint] = useState(false);
 
-  // Attach transformer to selected line
-  useEffect(() => {
-    if (isSelected && lineRef.current && transformerRef.current) {
-      transformerRef.current.nodes([lineRef.current]);
-      transformerRef.current.getLayer()?.batchDraw();
+  // Calculate start and end points
+  const rotationRad = ((line.rotation || 0) * Math.PI) / 180;
+  const startX = line.x;
+  const startY = line.y;
+  const endX = line.x + line.width * Math.cos(rotationRad);
+  const endY = line.y + line.width * Math.sin(rotationRad);
+
+  // Handle endpoint drag
+  const handleEndpointDragMove = (isStart: boolean, newX: number, newY: number) => {
+    if (onTransform) {
+      // Calculate new line parameters
+      let newStartX: number, newStartY: number, newEndX: number, newEndY: number;
+      
+      if (isStart) {
+        // Dragging start point, end point stays fixed
+        newStartX = newX;
+        newStartY = newY;
+        newEndX = endX;
+        newEndY = endY;
+      } else {
+        // Dragging end point, start point stays fixed
+        newStartX = startX;
+        newStartY = startY;
+        newEndX = newX;
+        newEndY = newY;
+      }
+      
+      // Calculate new width and rotation
+      const deltaX = newEndX - newStartX;
+      const deltaY = newEndY - newStartY;
+      const newWidth = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+      const newRotation = (Math.atan2(deltaY, deltaX) * 180) / Math.PI;
+      
+      // Update the line
+      onTransform(line.id, {
+        x: newStartX,
+        y: newStartY,
+        width: newWidth,
+        rotation: newRotation,
+      });
     }
-  }, [isSelected]);
+  };
+
+  const handleEndpointDragEnd = () => {
+    setIsDraggingEndpoint(false);
+  };
 
   const handleClick = (e: Konva.KonvaEventObject<MouseEvent>) => {
-    // Only allow selection in pan mode
-    // In creation modes, let the event bubble to the stage so users can draw over existing shapes
-    if (mode === 'pan') {
-      e.cancelBubble = true;
-      onClick(line.id);
+    // Allow selection in any mode
+    e.cancelBubble = true;
+    onClick(line.id, e.evt.shiftKey);
+  };
+
+  const handleDragStartEvent = () => {
+    if (onDragStart) {
+      onDragStart(line.id);
     }
   };
 
   const handleDragMove = (e: Konva.KonvaEventObject<DragEvent>) => {
     if (onDragMove) {
-      const stage = e.target.getStage();
-      if (stage) {
-        const pointerPos = stage.getPointerPosition();
-        if (pointerPos) {
-          const worldPos = {
-            x: (pointerPos.x - stage.x()) / stage.scaleX(),
-            y: (pointerPos.y - stage.y()) / stage.scaleY(),
-          };
-          onDragMove(worldPos.x, worldPos.y);
-        }
-      }
+      // Convert from center position back to start position
+      const centerX = e.target.x();
+      const centerY = e.target.y();
+      const rotationRad = ((line.rotation || 0) * Math.PI) / 180;
+      const newX = centerX - (line.width / 2) * Math.cos(rotationRad);
+      const newY = centerY - (line.width / 2) * Math.sin(rotationRad);
+      
+      onDragMove(line.id, newX, newY);
     }
   };
 
   const handleDragEnd = (e: Konva.KonvaEventObject<DragEvent>) => {
-    // For lines, we need to update both start and end points
-    const newX1 = line.x1 + e.target.x();
-    const newY1 = line.y1 + e.target.y();
-    const newX2 = line.x2 + e.target.x();
-    const newY2 = line.y2 + e.target.y();
+    const centerX = e.target.x();
+    const centerY = e.target.y();
     
-    onDragEnd(line.id, newX1, newY1, newX2, newY2);
+    // Convert from center position back to start position
+    const rotationRad = ((line.rotation || 0) * Math.PI) / 180;
+    const newX = centerX - (line.width / 2) * Math.cos(rotationRad);
+    const newY = centerY - (line.width / 2) * Math.sin(rotationRad);
+    
+    if (onTransform) {
+      onTransform(line.id, {
+        x: newX,
+        y: newY,
+      });
+    }
   };
 
   const handleMouseEnter = (e: Konva.KonvaEventObject<MouseEvent>) => {
     const container = e.target.getStage()?.container();
     if (container) {
-      // Only show pointer cursor if not in object creation mode
-      if (mode === 'pan') {
-        container.style.cursor = 'pointer';
-      }
+      container.style.cursor = 'pointer';
     }
     setIsHovered(true);
   };
@@ -91,19 +138,32 @@ export const Line = memo(function Line({
     setIsHovered(false);
   };
 
+  // Calculate the center position of the line
+  // The line is stored as start point (x, y) with width and rotation
+  // We need to find the center point along the rotated line
+  const centerX = line.x + (line.width / 2) * Math.cos(rotationRad);
+  const centerY = line.y + (line.width / 2) * Math.sin(rotationRad);
+
   return (
     <>
       <KonvaLine
         ref={lineRef}
         id={line.id}
-        points={[line.x1, line.y1, line.x2, line.y2]}
+        x={centerX}
+        y={centerY}
+        points={[0, 0, line.width, 0]}
+        offsetX={line.width / 2}
+        offsetY={0}
         stroke={line.stroke}
         strokeWidth={line.strokeWidth}
+        hitStrokeWidth={Math.max(line.strokeWidth + 8, 12)}
+        rotation={line.rotation || 0}
         lineCap="round"
         lineJoin="round"
-        draggable={isSelected}
+        draggable={isSelected && !isDraggingEndpoint}
         onClick={handleClick}
         onTap={handleClick}
+        onDragStart={handleDragStartEvent}
         onDragMove={handleDragMove}
         onDragEnd={handleDragEnd}
         onMouseEnter={handleMouseEnter}
@@ -114,17 +174,86 @@ export const Line = memo(function Line({
         shadowOffsetX={isHovered ? 2 : 0}
         shadowOffsetY={isHovered ? 2 : 0}
       />
-      {isSelected && (
-        <Transformer
-          ref={transformerRef}
-          borderEnabled={false}
-          anchorSize={8}
-          anchorStroke="#000000"
-          anchorFill="#ffffff"
-          anchorCornerRadius={2}
-          enabledAnchors={[]}
-          rotateEnabled={false}
-        />
+      
+      {/* Custom endpoint handles */}
+      {isSelected && showTransformer && (
+        <>
+          {/* Start point handle */}
+          <Circle
+            x={startX}
+            y={startY}
+            radius={6}
+            fill="#ffffff"
+            stroke="#3B82F6"
+            strokeWidth={2}
+            draggable={true}
+            onDragStart={() => setIsDraggingEndpoint(true)}
+            onDragMove={(e) => {
+              const stage = e.target.getStage();
+              if (stage) {
+                const pointerPos = stage.getPointerPosition();
+                if (pointerPos) {
+                  const worldPos = {
+                    x: (pointerPos.x - stage.x()) / stage.scaleX(),
+                    y: (pointerPos.y - stage.y()) / stage.scaleY(),
+                  };
+                  handleEndpointDragMove(true, worldPos.x, worldPos.y);
+                }
+              }
+            }}
+            onDragEnd={handleEndpointDragEnd}
+            onMouseEnter={(e) => {
+              const container = e.target.getStage()?.container();
+              if (container) {
+                container.style.cursor = 'move';
+              }
+            }}
+            onMouseLeave={(e) => {
+              const container = e.target.getStage()?.container();
+              if (container && !isDraggingEndpoint) {
+                container.style.cursor = mode === 'pan' ? 'grab' : 'crosshair';
+              }
+            }}
+          />
+          
+          {/* End point handle */}
+          <Circle
+            x={endX}
+            y={endY}
+            radius={6}
+            fill="#ffffff"
+            stroke="#3B82F6"
+            strokeWidth={2}
+            draggable={true}
+            onDragStart={() => setIsDraggingEndpoint(true)}
+            onDragMove={(e) => {
+              const stage = e.target.getStage();
+              if (stage) {
+                const pointerPos = stage.getPointerPosition();
+                if (pointerPos) {
+                  const worldPos = {
+                    x: (pointerPos.x - stage.x()) / stage.scaleX(),
+                    y: (pointerPos.y - stage.y()) / stage.scaleY(),
+                  };
+                  handleEndpointDragMove(false, worldPos.x, worldPos.y);
+                }
+              }
+            }}
+            onDragEnd={handleEndpointDragEnd}
+            onMouseEnter={(e) => {
+              const container = e.target.getStage()?.container();
+              if (container) {
+                container.style.cursor = 'move';
+              }
+            }}
+            onMouseLeave={(e) => {
+              const container = e.target.getStage()?.container();
+              if (container && !isDraggingEndpoint) {
+                container.style.cursor = mode === 'pan' ? 'grab' : 'crosshair';
+              }
+            }}
+          />
+        </>
       )}
     </>
   );

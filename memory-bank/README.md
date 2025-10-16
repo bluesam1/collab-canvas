@@ -114,7 +114,7 @@ projectbrief.md (Foundation)
 **CollabCanvas** is a real-time collaborative canvas application where multiple users can create and manipulate shapes together, with instant synchronization and multiplayer presence.
 
 **Status:** ✅ Complete (MVP + Enhancements)  
-**Version:** v1.1  
+**Version:** v1.2  
 **Live:** https://collab-canvas-2ba2e.web.app/
 
 **Tech Stack:**
@@ -129,7 +129,10 @@ projectbrief.md (Foundation)
 - Real-time sync (<100ms latency)
 - Multiplayer cursors and presence
 - Pan/zoom canvas (60 FPS)
-- Mode switching (Pan vs Rectangle)
+- Multiple shape types (rectangles, circles, lines, text)
+- Multi-select with 5 selection methods
+- Transform operations (resize, rotate)
+- Mode switching (Pan, Select, and creation modes)
 - Complete authentication system
 
 ## 🔍 Additional Resources
@@ -164,6 +167,6 @@ This Memory Bank is the source of truth for the project. Keep it:
 
 ---
 
-**Last Updated:** October 15, 2025  
-**Memory Bank Version:** 1.0
+**Last Updated:** October 16, 2025  
+**Memory Bank Version:** 1.1
 

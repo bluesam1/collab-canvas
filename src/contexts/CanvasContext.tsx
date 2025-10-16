@@ -54,6 +54,7 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
               width: objectData.width as number,
               height: objectData.height as number,
               fill: objectData.fill as string,
+              rotation: (objectData.rotation as number) ?? 0, // Default to 0 for backward compatibility
             } as Rectangle;
           case 'circle':
             return {
@@ -63,17 +64,19 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
               centerY: objectData.centerY as number,
               radius: objectData.radius as number,
               fill: objectData.fill as string,
+              rotation: (objectData.rotation as number) ?? 0, // Default to 0 for backward compatibility
             } as Circle;
           case 'line':
             return {
               ...baseShape,
               type: 'line' as const,
-              x1: objectData.x1 as number,
-              y1: objectData.y1 as number,
-              x2: objectData.x2 as number,
-              y2: objectData.y2 as number,
+              x: objectData.x as number,
+              y: objectData.y as number,
+              width: objectData.width as number,
+              height: (objectData.height as number) ?? 0,
               stroke: objectData.stroke as string,
               strokeWidth: objectData.strokeWidth as number,
+              rotation: (objectData.rotation as number) ?? 0,
             } as Line;
           case 'text':
             return {
@@ -84,6 +87,7 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
               text: objectData.text as string,
               fontSize: objectData.fontSize as number,
               fill: objectData.fill as string,
+              rotation: (objectData.rotation as number) ?? 0, // Default to 0 for backward compatibility
               bold: objectData.bold as boolean | undefined,
               italic: objectData.italic as boolean | undefined,
               underline: objectData.underline as boolean | undefined,
@@ -98,6 +102,7 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
               width: objectData.width as number,
               height: objectData.height as number,
               fill: objectData.fill as string,
+              rotation: (objectData.rotation as number) ?? 0, // Default to 0 for backward compatibility
             } as Rectangle;
         }
       });
@@ -192,12 +197,51 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
     }
   };
 
-  // Select an object (single selection only - no Firebase sync needed)
-  const selectObject = (id: string | null) => {
+  // Select an object (supports multi-select with Shift key)
+  const selectObject = (id: string | null, addToSelection = false) => {
     if (id === null) {
       setSelectedIds([]);
+    } else if (addToSelection) {
+      // Add to or remove from selection (toggle)
+      setSelectedIds((prev) => 
+        prev.includes(id) 
+          ? prev.filter(selectedId => selectedId !== id)
+          : [...prev, id]
+      );
     } else {
+      // Replace selection with single object
       setSelectedIds([id]);
+    }
+  };
+
+  // Select multiple objects at once
+  const selectMultiple = (ids: string[]) => {
+    setSelectedIds(ids);
+  };
+
+  // Clear all selections
+  const clearSelection = () => {
+    setSelectedIds([]);
+  };
+
+  // Delete all selected objects
+  const deleteSelected = async () => {
+    const idsToDelete = [...selectedIds];
+    
+    // Clear selection immediately
+    setSelectedIds([]);
+    
+    // Optimistic update: remove all selected objects from local state
+    setObjects((prev) => prev.filter((obj) => !idsToDelete.includes(obj.id)));
+    
+    // Delete from Firebase
+    try {
+      await Promise.all(
+        idsToDelete.map(id => deleteFirebaseObject(canvasId, id))
+      );
+    } catch (error) {
+      console.error('Error deleting objects from Firebase:', error);
+      // Note: Firebase listener will restore correct state
     }
   };
 
@@ -211,6 +255,9 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
     updateObject,
     deleteObject,
     selectObject,
+    selectMultiple,
+    clearSelection,
+    deleteSelected,
   };
 
   return (

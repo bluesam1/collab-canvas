@@ -20,6 +20,11 @@ export function CanvasEditorPage() {
     const savedColor = localStorage.getItem('collab-canvas-selected-color');
     return savedColor || '#3B82F6'; // Default blue
   });
+  // Initialize line thickness from localStorage or use default
+  const [lineThickness, setLineThickness] = useState(() => {
+    const savedThickness = localStorage.getItem('collab-canvas-line-thickness');
+    return savedThickness ? parseInt(savedThickness, 10) : 2; // Default 2px
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [canvasName, setCanvasName] = useState('');
   const [isEditingName, setIsEditingName] = useState(false);
@@ -32,6 +37,12 @@ export function CanvasEditorPage() {
   const handleColorChange = (color: string) => {
     setSelectedColor(color);
     localStorage.setItem('collab-canvas-selected-color', color);
+  };
+
+  // Handle line thickness change and save to localStorage
+  const handleLineThicknessChange = (thickness: number) => {
+    setLineThickness(thickness);
+    localStorage.setItem('collab-canvas-line-thickness', thickness.toString());
   };
 
   if (!authContext || !authContext.user) {
@@ -208,13 +219,19 @@ export function CanvasEditorPage() {
       <Toolbar 
         selectedColor={selectedColor} 
         onColorChange={handleColorChange}
+        lineThickness={lineThickness}
+        onLineThicknessChange={handleLineThicknessChange}
         showInfo={showInfo}
         onToggleInfo={() => setShowInfo(!showInfo)}
         onBackToCanvasList={handleBackToCanvasList}
       />
 
       {/* Canvas - full screen */}
-      <Canvas selectedColor={selectedColor} showInfo={showInfo} />
+      <Canvas 
+        selectedColor={selectedColor} 
+        lineThickness={lineThickness}
+        showInfo={showInfo} 
+      />
     </div>
   );
 }

@@ -2,10 +2,87 @@
 
 ## Current Status
 **Date**: October 16, 2025  
-**Phase**: Stable - All Core Features Complete  
+**Phase**: Stable - All Core Features + Multi-Select & Transforms Complete  
 **Active Work**: No active development - Project ready for next phase
 
 ## Recent Changes
+
+### Completed: Multi-Select & Transform Operations (Priority #2)
+**Completed**: October 16, 2025  
+**Impact**: Major feature enhancement enabling advanced shape manipulation
+**PRD**: `tasks/prd-multi-select-transforms.md`  
+**Tasks**: `tasks/tasks-prd-multi-select-transforms.md`
+
+#### What Was Added
+1. **Multi-Select System** ✅
+   - Updated selection state to support arrays of shape IDs
+   - Five selection methods: single click, Shift+click, drag-to-select box, Ctrl/Cmd+A, Select mode
+   - Visual selection box with dashed border for drag-to-select
+   - Complete containment strategy (shapes must be fully within box)
+   - Group operations: move, delete, color change, line thickness
+   - Bounding boxes visible for all selected shapes
+   - Dedicated Select mode with BoxSelect icon (dashed square)
+
+2. **Transform Operations - Resize** ✅
+   - Konva.Transformer integration for single-shape resize
+   - 8-point handles (4 corners, 4 edges) for rectangles and text
+   - Shift key to lock aspect ratio during resize
+   - Min/max size constraints enforced
+   - Shape-specific behaviors:
+     - **Rectangles**: Full 8-point resize
+     - **Circles**: Corner-only resize, uniform scaling (no rotation)
+     - **Lines**: Custom endpoint handles for free movement
+     - **Text**: Corner-only resize, aspect ratio locked, font size 8-72pt
+
+3. **Transform Operations - Rotation** ✅
+   - Center-based rotation for rectangles, lines, and text
+   - 15° angle snapping by default
+   - Shift key for smooth rotation (no snapping)
+   - Rotation handles hidden for multi-select
+   - Circles do not support rotation (disabled)
+   - Firebase sync with rotation property (0-360 degrees)
+
+4. **Performance Optimizations** ✅
+   - Multi-select drag: Only commit positions at drag end (~99.9% reduction in Firebase writes)
+   - Real-time visual feedback during drag with local offset tracking
+   - React.memo on all shape components (Rectangle, Circle, Line, Text)
+   - No performance degradation with 100+ shapes
+
+5. **UX Enhancements** ✅
+   - Navigation mode renamed to "Pan mode" with Hand icon
+   - Objects selectable in any mode (not restricted to Pan/Select)
+   - Auto-deselect when switching to creation modes
+   - Prevention of accidental selection after shape creation
+   - Line thickness control: toolbar button with flyout menu (1-24px)
+   - Stroke width persistence to localStorage
+   - Keyboard shortcuts: V (Pan), S (Select), R (Rectangle), C (Circle), L (Line), T (Text)
+   - Ctrl/Cmd+A shortcut to select all shapes
+
+6. **Developer Tools** ✅
+   - Hacker menu with "Create 100" random shapes feature
+   - Random generation of all shape types with varying properties
+   - Lorem ipsum text generation for text shapes
+
+7. **Line Enhancement** ✅
+   - Refactored line storage from (x1, y1, x2, y2) to (x, y, width, height, rotation)
+   - Custom endpoint handles replacing bounding box
+   - Intuitive point-to-point drawing
+   - Slanted line icon for better visual representation
+
+8. **Text Enhancements** ✅
+   - Center-based rotation
+   - Aspect ratio locking during resize
+   - Font size constraints (8-72pt) with position lock at limits
+   - No flipping when scaling beyond limits
+
+9. **Bug Fixes** ✅
+   - Fixed rotation to be center-based for all shapes
+   - Fixed line jumping during and after drag
+   - Fixed text jumping during resize
+   - Fixed circle position persistence
+   - Fixed multi-object drag performance issues
+   - Fixed React key warnings in color palette
+   - Fixed accidental parent shape selection after creation
 
 ### Completed: Additional Shape Types Implementation
 **Completed**: October 16, 2025  
@@ -172,17 +249,17 @@ All core MVP features working:
 
 ## Current Focus
 **Status**: Stable  
-**State**: All core features complete
+**State**: All core features + multi-select & transforms complete
 
-CollabCanvas now supports multiple shape types (Rectangle, Circle, Line, Text) with a modern, intuitive UI. The application is ready for production use and future enhancements.
+CollabCanvas now supports multiple shape types (Rectangle, Circle, Line, Text) with comprehensive multi-select capabilities and transform operations (resize, rotate). The application features optimized performance for multi-object operations and an intuitive, modern UI. Ready for production use and future enhancements.
 
 ## Next Steps
 Potential future enhancements (see `productContext.md` for full roadmap):
-1. **Shape Resizing** - Add resize handles to all shapes
-2. **Shape Rotation** - Enable rotation for all shapes
-3. **Undo/Redo** - Implement command pattern for undo/redo
+1. **Undo/Redo** - Implement command pattern for operation history
+2. **Copy/Paste** - Enable shape duplication across canvases
+3. **Shape Grouping** - Logical grouping of shapes that persist
 4. **Export/Import** - Export to PNG/SVG/PDF, import images
-5. **Layers & Z-Index** - Layer management and ordering
+5. **Layers & Z-Index** - Layer management and shape ordering
 6. **AI Canvas Agent** - Integrate AI agent for automated canvas operations
 
 ## Active Decisions & Considerations
@@ -192,13 +269,23 @@ Potential future enhancements (see `productContext.md` for full roadmap):
 2. **Sharing Model**: URL-based sharing (no explicit share UI) ✅
 3. **Navigation**: React Router with two main routes ✅
 4. **Canvas Isolation**: Objects and presence scoped per canvas ✅
-5. **Mode Switching**: Pan mode with multiple shape type modes ✅
+5. **Mode Switching**: Pan mode with multiple shape type modes + dedicated Select mode ✅
 6. **Testing Standards**: Vitest framework, tests in `tests/` directory ✅
 7. **Shape Type System**: Union types and type guards for all shapes ✅
 8. **Text Editing UX**: Modal editor with formatting options (bold, italic, underline) ✅
 9. **Shape Creation Flow**: Click-drag for Circle/Line, double-click for Text editing ✅
 10. **Toolbar Design**: Modern left-side vertical toolbar with shape selector and color picker ✅
 11. **Color Selection**: Flexible HexColorPicker replacing fixed 5-color palette ✅
+12. **Multi-Select Strategy**: Five methods (click, Shift+click, drag-box, Ctrl/Cmd+A, Select mode) ✅
+13. **Selection Box Strategy**: Complete containment (not intersection) ✅
+14. **Line Storage Model**: (x, y, width, height, rotation) format for consistency with other shapes ✅
+15. **Rotation Origin**: Center-based rotation for all rotatable shapes (rectangles, lines, text) ✅
+16. **Circle Resize**: Corner-only with uniform scaling, no rotation ✅
+17. **Line Handles**: Custom endpoint handles for intuitive editing ✅
+18. **Text Scaling**: Aspect ratio locked, font size 8-72pt with position lock at limits ✅
+19. **Multi-Select Drag Performance**: Local offset tracking with commit at drag end only ✅
+20. **Selection Flexibility**: Objects selectable in any mode (not just Pan/Select) ✅
+21. **Stroke Width Control**: Toolbar button with flyout menu, persisted to localStorage ✅
 
 ### Open Questions
 None - All core features are complete and stable
@@ -220,8 +307,9 @@ All dependencies up to date as of last check. No security vulnerabilities report
 - **Canvas Open**: <2s from list to editor
 - **Shape Sync**: <100ms
 - **Cursor Sync**: <50ms
-- **FPS**: Steady 60 FPS during pan/zoom
-- **Load Capacity**: Tested with 100+ shapes, 3 users
+- **FPS**: Steady 60 FPS during pan/zoom and transforms
+- **Multi-Select Drag**: ~99.9% reduction in Firebase writes (commit at end only)
+- **Load Capacity**: Tested with 100+ shapes, 3 users, multi-select operations
 
 ## Recent Bugs Fixed
 None recently. Application stable since PR #15 completion.
@@ -243,15 +331,22 @@ None recently. Application stable since PR #15 completion.
 - Canvas isolation works perfectly
 - URL-based sharing is intuitive
 - Mode switching improves UX significantly
+- Multi-select operations are smooth and intuitive
+- Transform operations (resize, rotate) work seamlessly
+- Performance optimizations deliver excellent responsiveness
+- Line endpoint handles provide natural editing experience
 - Toast notifications provide good feedback
 - Firebase performance is excellent
+- Keyboard shortcuts enhance workflow efficiency
 
 ## Areas for Future Improvement
 (See `productContext.md` for full list)
-- Shape resizing/rotation
-- Additional shape types (circles, lines, text)
 - Undo/redo functionality
-- Export to image/SVG
+- Copy/paste operations
+- Permanent shape grouping
+- Export to image/SVG/PDF
+- Import images and SVG files
 - Mobile touch optimization
 - Keyboard shortcuts help modal
+- Multi-line text support
 

@@ -6,13 +6,16 @@ import type { Circle as CircleType, CanvasMode } from '../../types';
 interface CircleProps {
   circle: CircleType;
   isSelected: boolean;
-  onClick: (id: string) => void;
+  onClick: (id: string, shiftKey?: boolean) => void;
+  onDragStart?: (id: string) => void;
   onDragEnd: (id: string, x: number, y: number) => void;
-  onDragMove?: (x: number, y: number) => void;
+  onDragMove?: (id: string, x: number, y: number) => void;
+  onTransform?: (id: string, updates: Partial<CircleType>) => void;
   mode: CanvasMode;
+  showTransformer?: boolean;
 }
 
-export const Circle = memo(function Circle({ circle, isSelected, onClick, onDragMove, onDragEnd, mode }: CircleProps) {
+export const Circle = memo(function Circle({ circle, isSelected, onClick, onDragStart, onDragMove, onDragEnd, onTransform, mode, showTransformer = true }: CircleProps) {
   const circleRef = useRef<Konva.Circle>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   const [isHovered, setIsHovered] = useState(false);
@@ -25,30 +28,57 @@ export const Circle = memo(function Circle({ circle, isSelected, onClick, onDrag
     }
   }, [isSelected]);
 
+  // Handle transform end (resize/rotate) - circles maintain circular shape
+  const handleTransformEnd = () => {
+    const node = circleRef.current;
+    if (node && onTransform) {
+      const scaleX = node.scaleX();
+      const scaleY = node.scaleY();
+      
+      // For circles, use the average scale to maintain circular shape
+      const avgScale = (scaleX + scaleY) / 2;
+      
+      // Reset scale
+      node.scaleX(1);
+      node.scaleY(1);
+      
+      // Get rotation and normalize to 0-360
+      let rotation = node.rotation() % 360;
+      if (rotation < 0) rotation += 360;
+      
+      onTransform(circle.id, {
+        centerX: node.x(),
+        centerY: node.y(),
+        radius: Math.max(5, node.radius() * avgScale), // Min 5px radius
+        rotation: rotation,
+      });
+    }
+  };
+
+  // Handle transform (resize only - rotation is disabled for circles)
+  const handleTransform = () => {
+    // No special handling needed - keepRatio ensures uniform scaling
+  };
+
   const handleClick = (e: Konva.KonvaEventObject<MouseEvent>) => {
-    // Only allow selection in pan mode
-    // In creation modes, let the event bubble to the stage so users can draw over existing shapes
-    if (mode === 'pan') {
-      e.cancelBubble = true; // Prevent event from bubbling to stage
-      onClick(circle.id);
+    // Allow selection in any mode
+    e.cancelBubble = true; // Prevent event from bubbling to stage
+    onClick(circle.id, e.evt.shiftKey);
+  };
+
+  const handleDragStartEvent = () => {
+    if (onDragStart) {
+      onDragStart(circle.id);
     }
   };
 
   const handleDragMove = (e: Konva.KonvaEventObject<DragEvent>) => {
     if (onDragMove) {
-      // Get the stage to access pointer position
-      const stage = e.target.getStage();
-      if (stage) {
-        const pointerPos = stage.getPointerPosition();
-        if (pointerPos) {
-          // Convert to world coordinates
-          const worldPos = {
-            x: (pointerPos.x - stage.x()) / stage.scaleX(),
-            y: (pointerPos.y - stage.y()) / stage.scaleY(),
-          };
-          onDragMove(worldPos.x, worldPos.y);
-        }
-      }
+      // For circles, x and y are already the center position
+      const centerX = e.target.x();
+      const centerY = e.target.y();
+      
+      onDragMove(circle.id, centerX, centerY);
     }
   };
 
@@ -59,10 +89,7 @@ export const Circle = memo(function Circle({ circle, isSelected, onClick, onDrag
   const handleMouseEnter = (e: Konva.KonvaEventObject<MouseEvent>) => {
     const container = e.target.getStage()?.container();
     if (container) {
-      // Only show pointer cursor if not in object creation mode
-      if (mode === 'pan') {
-        container.style.cursor = 'pointer';
-      }
+      container.style.cursor = 'pointer';
     }
     setIsHovered(true);
   };
@@ -89,11 +116,13 @@ export const Circle = memo(function Circle({ circle, isSelected, onClick, onDrag
         y={circle.centerY}
         radius={circle.radius}
         fill={circle.fill}
-        stroke={isSelected ? '#000000' : undefined}
+        rotation={circle.rotation || 0}
+        stroke={isSelected ? '#3B82F6' : undefined}
         strokeWidth={isSelected ? 2 : 0}
         draggable={isSelected}
         onClick={handleClick}
         onTap={handleClick}
+        onDragStart={handleDragStartEvent}
         onDragMove={handleDragMove}
         onDragEnd={handleDragEnd}
         onMouseEnter={handleMouseEnter}
@@ -107,13 +136,18 @@ export const Circle = memo(function Circle({ circle, isSelected, onClick, onDrag
       {isSelected && (
         <Transformer
           ref={transformerRef}
-          borderEnabled={false}
+          borderEnabled={true}
+          borderStroke="#3B82F6"
+          borderStrokeWidth={2}
           anchorSize={8}
-          anchorStroke="#000000"
+          anchorStroke="#3B82F6"
           anchorFill="#ffffff"
           anchorCornerRadius={2}
-          enabledAnchors={[]}
+          enabledAnchors={showTransformer ? ['top-left', 'top-right', 'bottom-left', 'bottom-right'] : []}
           rotateEnabled={false}
+          keepRatio={true}
+          onTransform={handleTransform}
+          onTransformEnd={handleTransformEnd}
         />
       )}
     </>

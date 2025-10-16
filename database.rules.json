@@ -32,10 +32,6 @@
           "centerX": { ".validate": "newData.isNumber()" },
           "centerY": { ".validate": "newData.isNumber()" },
           "radius": { ".validate": "newData.isNumber()" },
-          "x1": { ".validate": "newData.isNumber()" },
-          "y1": { ".validate": "newData.isNumber()" },
-          "x2": { ".validate": "newData.isNumber()" },
-          "y2": { ".validate": "newData.isNumber()" },
           "text": { ".validate": "newData.isString()" },
           "fontSize": { ".validate": "newData.isNumber()" },
           "fill": { ".validate": "newData.isString()" },
@@ -44,6 +40,7 @@
           "bold": { ".validate": "newData.isBoolean()" },
           "italic": { ".validate": "newData.isBoolean()" },
           "underline": { ".validate": "newData.isBoolean()" },
+          "rotation": { ".validate": "newData.isNumber()" },
           "$other": { ".validate": false }
         }
       }
