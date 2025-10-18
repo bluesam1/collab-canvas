@@ -18,6 +18,11 @@
   - **Firebase Authentication**: Email link (passwordless) + Google Sign-In
   - **Firebase Realtime Database**: Real-time data sync (<100ms latency)
   - **Firebase Hosting**: Static site hosting with CDN
+  - **Firebase Cloud Functions**: Serverless backend for AI processing
+- **OpenAI SDK 4.20.0+**: AI-powered canvas operations (server-side)
+  - **GPT-4 (gpt-4-turbo-preview)**: Natural language command processing
+  - **Function Calling**: 14 structured AI tools for canvas manipulation
+  - **Agents SDK**: Built-in function execution framework
 - WebSocket-based real-time updates
 - Built-in presence system
 
@@ -60,6 +65,8 @@
 - Modern browser (Chrome, Firefox, Safari, Edge)
 
 ### Local Development
+
+**Standard Development (Frontend Only):**
 ```bash
 # Install dependencies
 npm install
@@ -73,8 +80,29 @@ npm run dev
 # Open http://localhost:5173
 ```
 
+**AI Features Development (Frontend + Firebase Functions):**
+```bash
+# Terminal 1: Start Firebase Emulators
+npm run emulators
+# Starts: Functions (5001), Auth (9099), Database (9000)
+
+# Terminal 2: Start frontend dev server
+npm run dev
+# Open http://localhost:5173
+
+# Configure .env for emulator use:
+VITE_USE_FUNCTIONS_EMULATOR=true
+
+# Configure functions/.env.local with OpenAI API key:
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4-turbo-preview
+```
+
+**Note**: The database uses production Firebase (only functions and auth are emulated)
+
 ### Environment Variables
-Required in `.env` file (all prefixed with `VITE_`):
+
+**Client `.env` file** (all prefixed with `VITE_`):
 ```
 VITE_FIREBASE_API_KEY
 VITE_FIREBASE_AUTH_DOMAIN
@@ -83,6 +111,22 @@ VITE_FIREBASE_PROJECT_ID
 VITE_FIREBASE_STORAGE_BUCKET
 VITE_FIREBASE_MESSAGING_SENDER_ID
 VITE_FIREBASE_APP_ID
+VITE_USE_FUNCTIONS_EMULATOR=true  # Set to false for production
+```
+
+**Functions `functions/.env.local` file** (for local development only, add to .gitignore):
+```
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4-turbo-preview
+```
+
+**Production Firebase Functions** (set via Firebase CLI):
+```bash
+# Set secret (recommended for sensitive data like API keys)
+firebase functions:secrets:set OPENAI_API_KEY
+
+# Set config (for non-sensitive data)
+firebase functions:config:set openai.model="gpt-4-turbo-preview"
 ```
 
 ### Firebase Setup
@@ -119,7 +163,7 @@ VITE_FIREBASE_APP_ID
 
 ## Dependencies
 
-### Core Dependencies
+### Core Dependencies (Client)
 ```json
 {
   "firebase": "^12.4.0",
@@ -129,6 +173,15 @@ VITE_FIREBASE_APP_ID
   "react-dom": "^19.1.1",
   "react-konva": "^19.0.10",
   "react-router-dom": "^7.9.4"
+}
+```
+
+### Firebase Functions Dependencies
+```json
+{
+  "firebase-functions": "^4.0.0",
+  "firebase-admin": "^11.0.0",
+  "openai": "^4.20.0"
 }
 ```
 
@@ -271,7 +324,12 @@ collab-canvas/
 │   │   ├── canvas-list/
 │   │   ├── common/
 │   │   ├── presence/
-│   │   └── toolbar/
+│   │   ├── toolbar/
+│   │   └── ai/                  # AI Assistant components (NEW)
+│   │       ├── AIAssistantButton.tsx
+│   │       ├── AIChatPanel.tsx
+│   │       ├── AIInfoModal.tsx
+│   │       └── AIConfirmPanel.tsx
 │   ├── pages/                   # Route pages
 │   │   ├── CanvasListPage.tsx
 │   │   ├── CanvasEditor.tsx
@@ -281,14 +339,36 @@ collab-canvas/
 │   │   ├── useCanvas.ts
 │   │   ├── useCanvasList.ts
 │   │   ├── usePresence.ts
-│   │   └── useToast.ts
+│   │   ├── useToast.ts
+│   │   └── useFrameShapes.ts    # Auto-frame selected shapes
+│   ├── services/                # External services (NEW)
+│   │   ├── ai.ts                # Cloud Function client & tool execution
+│   │   └── aiTools.ts           # AI tool implementations
 │   ├── types/
-│   │   └── index.ts             # TypeScript types
+│   │   ├── index.ts             # TypeScript types
+│   │   └── ai.ts                # AI-specific types (NEW)
 │   ├── utils/
 │   │   ├── firebase.ts          # Firebase helpers
 │   │   ├── colors.ts            # Color utilities
-│   │   └── canvases.ts          # Canvas operations
+│   │   ├── canvases.ts          # Canvas operations
+│   │   ├── canvasHelpers.ts     # Canvas viewport helpers (NEW)
+│   │   └── aiExamples.ts        # AI command examples (NEW)
 │   └── index.css                # Global styles
+├── functions/                   # Firebase Cloud Functions (NEW)
+│   ├── src/
+│   │   ├── index.ts             # Functions entry point
+│   │   ├── ai/
+│   │   │   ├── openai.ts        # OpenAI client initialization
+│   │   │   ├── tools.ts         # AI tool schemas (14 tools)
+│   │   │   ├── executor.ts      # Agent execution logic
+│   │   │   └── core.ts          # Core AI processing
+│   │   └── types/
+│   │       └── ai.ts            # Shared AI types
+│   ├── lib/                     # Compiled JavaScript
+│   ├── .env.local               # Local dev env vars (gitignored)
+│   ├── package.json             # Functions dependencies
+│   ├── tsconfig.json            # Functions TypeScript config
+│   └── vitest.config.ts         # AI tests config
 ├── tests/                       # Test files (Vitest framework)
 │   ├── setup.ts                 # Global test setup
 │   ├── auth.test.tsx           # Authentication tests
@@ -296,9 +376,11 @@ collab-canvas/
 │   ├── sync.test.tsx           # Real-time sync tests
 │   ├── presence.test.tsx       # Presence system tests
 │   ├── circle.test.tsx         # Circle component tests
-│   ├── line.test.tsx           # Line component tests (future)
-│   └── text.test.tsx           # Text component tests (future)
-├── firebase.json                # Firebase config
+│   ├── line.test.tsx           # Line component tests
+│   ├── text.test.tsx           # Text component tests
+│   ├── ai-integration.test.tsx # AI integration tests (NEW)
+│   └── ai-tool-selection.test.tsx # AI tool selection tests (NEW)
+├── firebase.json                # Firebase config (includes emulators)
 ├── database.rules.json          # Security rules
 ├── vite.config.ts               # Build config
 ├── tsconfig.json                # TypeScript config

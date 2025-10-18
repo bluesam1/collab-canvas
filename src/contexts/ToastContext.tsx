@@ -6,11 +6,13 @@ interface ToastItem {
   message: string;
   type: ToastType;
   duration?: number;
+  actionLabel?: string;
+  onAction?: () => void;
 }
 
 interface ToastContextType {
-  showToast: (message: string, type: ToastType, duration?: number) => void;
-  showSuccess: (message: string, duration?: number) => void;
+  showToast: (message: string, type: ToastType, duration?: number, actionLabel?: string, onAction?: () => void) => void;
+  showSuccess: (message: string, duration?: number, actionLabel?: string, onAction?: () => void) => void;
   showError: (message: string, duration?: number) => void;
   showInfo: (message: string, duration?: number) => void;
 }
@@ -24,15 +26,15 @@ interface ToastProviderProps {
 export function ToastProvider({ children }: ToastProviderProps) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
-  const showToast = useCallback((message: string, type: ToastType, duration?: number) => {
+  const showToast = useCallback((message: string, type: ToastType, duration?: number, actionLabel?: string, onAction?: () => void) => {
     const id = Math.random().toString(36).substr(2, 9);
-    const newToast: ToastItem = { id, message, type, duration };
+    const newToast: ToastItem = { id, message, type, duration, actionLabel, onAction };
     
     setToasts(prev => [...prev, newToast]);
   }, []);
 
-  const showSuccess = useCallback((message: string, duration?: number) => {
-    showToast(message, 'success', duration);
+  const showSuccess = useCallback((message: string, duration?: number, actionLabel?: string, onAction?: () => void) => {
+    showToast(message, 'success', duration, actionLabel, onAction);
   }, [showToast]);
 
   const showError = useCallback((message: string, duration?: number) => {
@@ -66,6 +68,8 @@ export function ToastProvider({ children }: ToastProviderProps) {
             type={toast.type}
             duration={toast.duration}
             onClose={() => removeToast(toast.id)}
+            actionLabel={toast.actionLabel}
+            onAction={toast.onAction}
           />
         ))}
       </div>

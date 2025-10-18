@@ -6,7 +6,9 @@ import type { Rectangle as RectangleType, CanvasMode } from '../../types';
 interface RectangleProps {
   rectangle: RectangleType;
   isSelected: boolean;
+  isDraggable?: boolean; // Separate from visual selection
   onClick: (id: string, shiftKey?: boolean) => void;
+  onDblClick?: (id: string) => void;
   onDragStart?: (id: string) => void;
   onDragEnd: (id: string, x: number, y: number) => void;
   onDragMove?: (id: string, x: number, y: number) => void;
@@ -15,7 +17,7 @@ interface RectangleProps {
   showTransformer?: boolean;
 }
 
-export const Rectangle = memo(function Rectangle({ rectangle, isSelected, onClick, onDragStart, onDragEnd, onDragMove, onTransform, mode, showTransformer = true }: RectangleProps) {
+export const Rectangle = memo(function Rectangle({ rectangle, isSelected, isDraggable, onClick, onDblClick, onDragStart, onDragEnd, onDragMove, onTransform, mode, showTransformer = true }: RectangleProps) {
   const rectRef = useRef<Konva.Rect>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   const [isHovered, setIsHovered] = useState(false);
@@ -24,6 +26,10 @@ export const Rectangle = memo(function Rectangle({ rectangle, isSelected, onClic
   useEffect(() => {
     if (isSelected && rectRef.current && transformerRef.current) {
       transformerRef.current.nodes([rectRef.current]);
+      transformerRef.current.getLayer()?.batchDraw();
+    } else if (!isSelected && transformerRef.current) {
+      // Clean up transformer when deselected
+      transformerRef.current.nodes([]);
       transformerRef.current.getLayer()?.batchDraw();
     }
   }, [isSelected]);
@@ -87,6 +93,13 @@ export const Rectangle = memo(function Rectangle({ rectangle, isSelected, onClic
     onClick(rectangle.id, e.evt.shiftKey);
   };
 
+  const handleDoubleClick = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    e.cancelBubble = true; // Prevent event from bubbling to stage
+    if (onDblClick) {
+      onDblClick(rectangle.id);
+    }
+  };
+
   const handleDragStartEvent = () => {
     if (onDragStart) {
       onDragStart(rectangle.id);
@@ -128,6 +141,8 @@ export const Rectangle = memo(function Rectangle({ rectangle, isSelected, onClic
       // Reset to the mode-based cursor
       if (mode === 'pan') {
         container.style.cursor = 'grab';
+      } else if (mode === 'select') {
+        container.style.cursor = 'default';
       } else {
         container.style.cursor = 'crosshair';
       }
@@ -148,11 +163,14 @@ export const Rectangle = memo(function Rectangle({ rectangle, isSelected, onClic
         rotation={rectangle.rotation || 0}
         offsetX={rectangle.width / 2}
         offsetY={rectangle.height / 2}
+        opacity={isSelected ? 0.7 : 1}
         stroke={isSelected ? '#3B82F6' : undefined}
         strokeWidth={isSelected ? 2 : 0}
-        draggable={isSelected}
+        draggable={isDraggable !== undefined ? isDraggable : isSelected}
         onClick={handleClick}
         onTap={handleClick}
+        onDblClick={handleDoubleClick}
+        onDblTap={handleDoubleClick}
         onDragStart={handleDragStartEvent}
         onDragMove={handleDragMove}
         onDragEnd={handleDragEnd}

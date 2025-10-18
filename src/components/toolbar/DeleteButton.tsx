@@ -7,8 +7,8 @@ export function DeleteButton() {
 
   const handleDelete = () => {
     if (hasSelection) {
-      // Delete the first selected object (single selection only in MVP)
-      deleteObject(selectedIds[0]);
+      // Delete all selected objects (supports batch delete)
+      deleteObject(selectedIds);
     }
   };
 
@@ -21,8 +21,8 @@ export function DeleteButton() {
           ? 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500'
           : 'bg-gray-200 text-gray-400 cursor-not-allowed'
       }`}
-      title={hasSelection ? 'Delete selected shape' : 'No shape selected'}
-      aria-label="Delete selected shape"
+      title={hasSelection ? `Delete selected shape${selectedIds.length > 1 ? 's' : ''}` : 'No shape selected'}
+      aria-label={hasSelection ? `Delete ${selectedIds.length} selected shape${selectedIds.length > 1 ? 's' : ''}` : 'No shape selected'}
     >
       <span className="flex items-center gap-2">
         {/* Delete icon (trash can) */}

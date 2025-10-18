@@ -8,7 +8,14 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest"
+    "test": "vitest",
+    "test:ai": "vitest tests/ai-integration.test.tsx",
+    "test:ai:ui": "vitest tests/ai-integration.test.tsx --ui",
+    "test:ai-tools": "vitest tests/ai-tool-selection.test.tsx",
+    "test:ai-tools:ui": "vitest tests/ai-tool-selection.test.tsx --ui",
+    "emulators": "cd functions && npm run emulators",
+    "functions:build": "cd functions && npm run build",
+    "functions:dev": "cd functions && npm run dev"
   },
   "dependencies": {
     "firebase": "^12.4.0",

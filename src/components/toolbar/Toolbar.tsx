@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Square, Circle, Type, Trash2, Droplet, Slash, Info, ArrowLeft, Hand, Terminal, BoxSelect } from 'lucide-react';
+import { Square, Circle, Type, Trash2, Droplet, Slash, Info, ArrowLeft, Hand, Terminal, BoxSelect, Maximize2, Undo, Zap, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCanvas } from '../../hooks/useCanvas';
 import { isLine } from '../../types';
 import { useContext } from 'react';
 import { UserContext } from '../../contexts/UserContext';
+import { STANDARD_COLORS } from '../../utils/colors';
 
 interface ToolbarProps {
   selectedColor: string;
@@ -13,48 +14,19 @@ interface ToolbarProps {
   showInfo: boolean;
   onToggleInfo: () => void;
   onBackToCanvasList: () => void;
+  onFrameSelected?: () => void;
+  onDeleteSelected?: () => void;
+  currentZoom: number;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onZoomReset: () => void;
 }
 
-// Standard color palette - 100 colors
-const STANDARD_COLORS = [
-  // Grayscale
-  '#000000', '#1A1A1A', '#333333', '#4D4D4D', '#666666', '#808080', '#999999', '#B3B3B3', '#CCCCCC', '#E6E6E6', '#FFFFFF',
-  
-  // Reds
-  '#FF0000', '#FF3333', '#FF6666', '#FF9999', '#FFCCCC', '#CC0000', '#990000', '#660000', '#330000', '#FF6666',
-  
-  // Oranges
-  '#FF8000', '#FF9933', '#FFB366', '#FFCC99', '#FFE6CC', '#CC6600', '#994D00', '#663300', '#331A00', '#FFB366',
-  
-  // Yellows
-  '#FFFF00', '#FFFF33', '#FFFF66', '#FFFF99', '#FFFFCC', '#CCCC00', '#999900', '#666600', '#333300', '#FFFF66',
-  
-  // Greens
-  '#00FF00', '#33FF33', '#66FF66', '#99FF99', '#CCFFCC', '#00CC00', '#009900', '#006600', '#003300', '#66FF66',
-  
-  // Cyans
-  '#00FFFF', '#33FFFF', '#66FFFF', '#99FFFF', '#CCFFFF', '#00CCCC', '#009999', '#006666', '#003333', '#66FFFF',
-  
-  // Blues
-  '#0000FF', '#3333FF', '#6666FF', '#9999FF', '#CCCCFF', '#0000CC', '#000099', '#000066', '#000033', '#6666FF',
-  
-  // Purples
-  '#8000FF', '#9933FF', '#B366FF', '#CC99FF', '#E6CCFF', '#6600CC', '#4D0099', '#330066', '#1A0033', '#B366FF',
-  
-  // Magentas
-  '#FF00FF', '#FF33FF', '#FF66FF', '#FF99FF', '#FFCCFF', '#CC00CC', '#990099', '#660066', '#330033', '#FF66FF',
-  
-  // Browns
-  '#8B4513', '#A0522D', '#CD853F', '#DEB887', '#F5DEB3', '#654321', '#4A2C2A', '#2F1B14', '#1A0F0A', '#CD853F',
-  
-  // Pinks
-  '#FFC0CB', '#FFB6C1', '#FFA0B4', '#FF8FA3', '#FF7F92', '#FF69B4', '#FF1493', '#DC143C', '#B22222', '#FF8FA3'
-];
-
-export function Toolbar({ selectedColor, onColorChange, lineThickness, onLineThicknessChange, showInfo, onToggleInfo, onBackToCanvasList }: ToolbarProps) {
-  const { mode, setMode, selectedIds, deleteSelected, updateObject, objects, createObject, clearSelection } = useCanvas();
+export function Toolbar({ selectedColor, onColorChange, lineThickness, onLineThicknessChange, showInfo, onToggleInfo, onBackToCanvasList, onFrameSelected, onDeleteSelected, currentZoom, onZoomIn, onZoomOut, onZoomReset }: ToolbarProps) {
+  const { mode, setMode, selectedIds, deleteSelected, updateObject, objects, createObject, clearSelection, undo, undoState, performanceMode, setPerformanceMode } = useCanvas();
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showStrokeWidthMenu, setShowStrokeWidthMenu] = useState(false);
+  const [showZoomMenu, setShowZoomMenu] = useState(false);
   const [showHackerMenu, setShowHackerMenu] = useState(false);
   const authContext = useContext(UserContext);
 
@@ -85,11 +57,6 @@ export function Toolbar({ selectedColor, onColorChange, lineThickness, onLineThi
 
   const iconColor = getContrastColor(selectedColor);
 
-  const navigationTools = [
-    { id: 'pan' as const, icon: Hand, label: 'Pan (V)' },
-    { id: 'select' as const, icon: BoxSelect, label: 'Multi-Select (S)' },
-  ];
-
   const shapeTools = [
     { id: 'rectangle' as const, icon: Square, label: 'Rectangle (R)' },
     { id: 'circle' as const, icon: Circle, label: 'Circle (C)' },
@@ -101,7 +68,12 @@ export function Toolbar({ selectedColor, onColorChange, lineThickness, onLineThi
 
   const handleDelete = () => {
     if (selectedIds.length > 0) {
-      deleteSelected();
+      // Use poof effect if available, otherwise regular delete
+      if (onDeleteSelected) {
+        onDeleteSelected();
+      } else {
+        deleteSelected();
+      }
     }
   };
 
@@ -238,27 +210,123 @@ export function Toolbar({ selectedColor, onColorChange, lineThickness, onLineThi
       {/* Divider */}
       <div className="w-10 h-px bg-gray-700 my-1" />
 
-      {/* Navigation Tools */}
-      {navigationTools.map((tool) => {
-        const Icon = tool.icon;
-        return (
+      {/* View Controls Group */}
+      <div className="flex flex-col gap-1">
+        {/* Pan Mode */}
+        <button
+          onClick={() => handleModeChange('pan')}
+          className={`w-12 h-12 rounded-lg flex items-center justify-center transition-all group relative ${
+            mode === 'pan'
+              ? 'bg-blue-600 text-white'
+              : 'text-gray-400 hover:text-white hover:bg-gray-700'
+          }`}
+          title="Pan (V)"
+        >
+          <Hand size={20} />
+          <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity z-30">
+            Pan (V)
+          </span>
+        </button>
+
+        {/* Multi-Select Mode */}
+        <button
+          onClick={() => handleModeChange('select')}
+          className={`w-12 h-12 rounded-lg flex items-center justify-center transition-all group relative ${
+            mode === 'select'
+              ? 'bg-blue-600 text-white'
+              : 'text-gray-400 hover:text-white hover:bg-gray-700'
+          }`}
+          title="Multi-Select (S)"
+        >
+          <BoxSelect size={20} />
+          <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity z-30">
+            Multi-Select (S)
+          </span>
+        </button>
+
+        {/* Zoom Menu */}
+        <div className="relative">
           <button
-            key={tool.id}
-            onClick={() => handleModeChange(tool.id)}
-            className={`w-12 h-12 rounded-lg flex items-center justify-center transition-all group relative ${
-              mode === tool.id
-                ? 'bg-blue-600 text-white'
+            onClick={() => setShowZoomMenu(!showZoomMenu)}
+            className={`w-12 h-12 rounded-lg flex items-center justify-center transition-colors group relative ${
+              showZoomMenu
+                ? 'bg-gray-700 text-white'
                 : 'text-gray-400 hover:text-white hover:bg-gray-700'
             }`}
-            title={tool.label}
+            title={`Zoom: ${(currentZoom * 100).toFixed(0)}%`}
           >
-            <Icon size={20} />
+            <div className="text-[10px] font-bold">{(currentZoom * 100).toFixed(0)}%</div>
             <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity z-30">
-              {tool.label}
+              Zoom
             </span>
           </button>
-        );
-      })}
+
+          {showZoomMenu && (
+            <>
+              {/* Backdrop to close menu */}
+              <div
+                className="fixed inset-0 z-30"
+                onClick={() => setShowZoomMenu(false)}
+              />
+              {/* Zoom menu flyout */}
+              <div className="absolute left-full bottom-0 ml-2 bg-gray-800 rounded-lg border border-gray-700 shadow-xl z-40 min-w-[160px]">
+                <div className="text-xs text-gray-400 px-3 py-2 border-b border-gray-700 font-mono">
+                  Zoom Controls
+                </div>
+                <button
+                  onClick={() => {
+                    onZoomIn();
+                    setShowZoomMenu(false);
+                  }}
+                  className="w-full text-left px-3 py-2 text-sm text-white hover:bg-gray-700 transition-colors flex items-center gap-2"
+                >
+                  <ZoomIn size={16} />
+                  Zoom In
+                </button>
+                <button
+                  onClick={() => {
+                    onZoomReset();
+                    setShowZoomMenu(false);
+                  }}
+                  className="w-full text-left px-3 py-2 text-sm text-white hover:bg-gray-700 transition-colors flex items-center gap-2"
+                >
+                  <div className="w-4 h-4 flex items-center justify-center text-[10px] font-bold border border-white rounded">
+                    1x
+                  </div>
+                  Reset to 100%
+                </button>
+                <button
+                  onClick={() => {
+                    onZoomOut();
+                    setShowZoomMenu(false);
+                  }}
+                  className="w-full text-left px-3 py-2 text-sm text-white hover:bg-gray-700 transition-colors flex items-center gap-2"
+                >
+                  <ZoomOut size={16} />
+                  Zoom Out
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Frame Selected */}
+        <button
+          onClick={onFrameSelected}
+          disabled={selectedIds.length === 0}
+          className={`w-12 h-12 rounded-lg flex items-center justify-center transition-colors group relative ${
+            selectedIds.length > 0
+              ? 'text-gray-400 hover:text-white hover:bg-gray-700'
+              : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+          }`}
+          title={selectedIds.length > 0 ? `Frame ${selectedIds.length} shape${selectedIds.length > 1 ? 's' : ''}` : 'Select shapes to frame'}
+        >
+          <Maximize2 size={20} />
+          <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity z-30">
+            {selectedIds.length > 0 ? `Frame Selected (${selectedIds.length})` : 'Frame Selected'}
+          </span>
+        </button>
+      </div>
 
       {/* Divider */}
       <div className="w-10 h-px bg-gray-700 my-1" />
@@ -428,7 +496,7 @@ export function Toolbar({ selectedColor, onColorChange, lineThickness, onLineThi
         disabled={selectedIds.length === 0}
         className={`w-12 h-12 rounded-lg flex items-center justify-center transition-colors group relative ${
           selectedIds.length > 0
-            ? 'bg-red-600 hover:bg-red-700 text-white'
+            ? 'text-gray-400 hover:text-white hover:bg-gray-700'
             : 'bg-gray-700 text-gray-500 cursor-not-allowed'
         }`}
         title="Delete"
@@ -439,7 +507,24 @@ export function Toolbar({ selectedColor, onColorChange, lineThickness, onLineThi
         </span>
       </button>
 
-      {/* Spacer to push info button to bottom */}
+      {/* Undo Button */}
+      <button
+        onClick={undo}
+        disabled={!undoState}
+        className={`w-12 h-12 rounded-lg flex items-center justify-center transition-colors group relative ${
+          undoState
+            ? 'text-gray-400 hover:text-white hover:bg-gray-700'
+            : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+        }`}
+        title={undoState ? `Undo ${undoState.operation} (Ctrl/Cmd+Z)` : 'Nothing to undo'}
+      >
+        <Undo size={20} />
+        <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity z-30">
+          {undoState ? `Undo ${undoState.operation.charAt(0).toUpperCase() + undoState.operation.slice(1)}` : 'Nothing to undo'}
+        </span>
+      </button>
+
+      {/* Spacer to push bottom buttons */}
       <div className="flex-1" />
 
       {/* Info Button */}
@@ -493,6 +578,13 @@ export function Toolbar({ selectedColor, onColorChange, lineThickness, onLineThi
               >
                 <Terminal size={14} className="text-green-400" />
                 Create 100
+              </button>
+              <button
+                onClick={() => setPerformanceMode(!performanceMode)}
+                className="w-full text-left px-3 py-2 text-sm text-white hover:bg-gray-700 transition-colors flex items-center gap-2 font-mono"
+              >
+                <Zap size={14} className={performanceMode ? "text-yellow-400" : "text-gray-400"} />
+                Performance: {performanceMode ? 'ON' : 'OFF'}
               </button>
             </div>
           </>

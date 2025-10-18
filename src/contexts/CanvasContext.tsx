@@ -1,13 +1,12 @@
 import { createContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
-import type { Shape, CanvasContextType, CanvasMode, Rectangle, Circle, Line, Text } from '../types';
+import type { Shape, CanvasContextType, CanvasMode, Rectangle, Circle, Line, Text, UndoState, UndoOperationType } from '../types';
 import { 
   subscribeToObjects, 
-  createObject as createFirebaseObject,
   updateObject as updateFirebaseObject,
   deleteObject as deleteFirebaseObject
 } from '../utils/firebase';
-import { ref, push } from 'firebase/database';
+import { ref, push, set } from 'firebase/database';
 import { database } from '../config/firebase';
 
 // Create the context
@@ -23,6 +22,9 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [mode, setMode] = useState<CanvasMode>('pan'); // Default to pan mode
+  const [undoState, setUndoState] = useState<UndoState | null>(null);
+  const [disableUndoCapture, setDisableUndoCapture] = useState(false);
+  const [performanceMode, setPerformanceMode] = useState(true); // Performance mode toggle (on by default)
 
   // Set up Firebase listener for real-time sync
   useEffect(() => {
@@ -117,8 +119,101 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
     };
   }, [canvasId]);
 
+  // Undo helper functions
+  const captureUndoSnapshot = (operation: UndoOperationType, affectedIds: string[]) => {
+    // Skip if undo capture is disabled (e.g., during AI batch operations)
+    if (disableUndoCapture) {
+      return;
+    }
+    
+    // Capture current state of affected shapes BEFORE operation
+    const shapesSnapshot = objects.filter(obj => affectedIds.includes(obj.id));
+    
+    setUndoState({
+      operation,
+      shapesSnapshot,
+      affectedIds,
+      timestamp: Date.now(),
+    });
+  };
+
+  const clearUndo = () => {
+    setUndoState(null);
+  };
+
+  const undo = async () => {
+    if (!undoState) {
+      return;
+    }
+
+    // Disable auto-capture during undo to prevent creating new undo state
+    setDisableUndoCapture(true);
+
+    switch (undoState.operation) {
+      case 'create':
+        // Delete the created shapes
+        await deleteObject(undoState.affectedIds);
+        break;
+
+      case 'delete':
+        // Restore the deleted shapes
+        for (const shape of undoState.shapesSnapshot) {
+          // Remove id, createdAt, updatedAt and recreate with same ID
+          const { id, createdAt, updatedAt, ...shapeData } = shape;
+          const now = Date.now();
+          
+          // Optimistic update
+          setObjects((prev) => [...prev, { ...shape, updatedAt: now }]);
+          
+          // Write to Firebase with original ID
+          try {
+            const specificObjectRef = ref(database, `objects/${canvasId}/${id}`);
+            await set(specificObjectRef, {
+              ...shapeData,
+              id,
+              createdAt,
+              updatedAt: now,
+            });
+          } catch (error) {
+            console.error('Error restoring object in Firebase:', error);
+          }
+        }
+        break;
+
+      case 'modify':
+        // Restore previous state of modified shapes - batch update all at once
+        const now = Date.now();
+        
+        // Create a map of ID -> original shape for quick lookup
+        const shapeMap = new Map(undoState.shapesSnapshot.map(s => [s.id, s]));
+        
+        // Optimistic update: restore all shapes at once
+        setObjects((prev) =>
+          prev.map((obj) => {
+            const originalShape = shapeMap.get(obj.id);
+            return originalShape ? { ...originalShape, updatedAt: now } : obj;
+          })
+        );
+
+        // Write to Firebase - batch all updates
+        await Promise.all(
+          undoState.shapesSnapshot.map((shape) => {
+            const { id, createdAt, updatedAt, ...shapeUpdates } = shape;
+            return updateFirebaseObject(canvasId, id, { ...shapeUpdates, updatedAt: now });
+          })
+        );
+        break;
+    }
+
+    // Re-enable auto-capture
+    setDisableUndoCapture(false);
+
+    // Clear undo state after using it (single-level undo)
+    setUndoState(null);
+  };
+
   // Create a new object with Firebase integration
-  const createObject = async (objectData: Omit<Rectangle, 'id' | 'createdAt' | 'updatedAt'> | Omit<Circle, 'id' | 'createdAt' | 'updatedAt'> | Omit<Line, 'id' | 'createdAt' | 'updatedAt'> | Omit<Text, 'id' | 'createdAt' | 'updatedAt'>) => {
+  const createObject = async (objectData: Omit<Rectangle, 'id' | 'createdAt' | 'updatedAt'> | Omit<Circle, 'id' | 'createdAt' | 'updatedAt'> | Omit<Line, 'id' | 'createdAt' | 'updatedAt'> | Omit<Text, 'id' | 'createdAt' | 'updatedAt'>): Promise<string | null> => {
     // Generate a unique ID using Firebase push
     const objectsRef = ref(database, `objects/${canvasId}`);
     const newObjectRef = push(objectsRef);
@@ -126,7 +221,7 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
 
     if (!objectId) {
       console.error('Failed to generate object ID');
-      return;
+      return null;
     }
 
     const now = Date.now();
@@ -140,23 +235,97 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
     // Optimistic update: add to local state immediately
     setObjects((prev) => [...prev, newObject]);
 
-    // Write to Firebase
+    // Write to Firebase using the specific object ref with our generated ID
     try {
-      await createFirebaseObject(canvasId, {
+      const specificObjectRef = ref(database, `objects/${canvasId}/${objectId}`);
+      await set(specificObjectRef, {
         ...objectData,
         id: objectId,
         createdAt: now,
         updatedAt: now,
       });
+      
+      // Capture undo snapshot AFTER successful creation
+      captureUndoSnapshot('create', [objectId]);
+      
+      return objectId;
     } catch (error) {
       console.error('Error creating object in Firebase:', error);
       // Rollback optimistic update on error
       setObjects((prev) => prev.filter((obj) => obj.id !== objectId));
+      return null;
+    }
+  };
+
+  // Create multiple objects in batch (optimized for AI bulk operations)
+  const createObjectsBatch = async (
+    objectsData: Array<Omit<Rectangle, 'id' | 'createdAt' | 'updatedAt'> | Omit<Circle, 'id' | 'createdAt' | 'updatedAt'> | Omit<Line, 'id' | 'createdAt' | 'updatedAt'> | Omit<Text, 'id' | 'createdAt' | 'updatedAt'>>
+  ): Promise<string[]> => {
+    if (objectsData.length === 0) return [];
+
+    const now = Date.now();
+    const objectsRef = ref(database, `objects/${canvasId}`);
+    
+    // Generate IDs and create all shape objects in memory
+    const newShapes: Shape[] = [];
+    const firebaseUpdates: Record<string, any> = {};
+    const ids: string[] = [];
+
+    for (const objectData of objectsData) {
+      const newObjectRef = push(objectsRef);
+      const objectId = newObjectRef.key;
+      
+      if (!objectId) {
+        console.error('Failed to generate object ID');
+        continue;
+      }
+
+      const newObject: Shape = {
+        ...objectData,
+        id: objectId,
+        createdAt: now,
+        updatedAt: now,
+      } as Shape;
+
+      newShapes.push(newObject);
+      ids.push(objectId);
+      
+      // Prepare Firebase update path
+      firebaseUpdates[`objects/${canvasId}/${objectId}`] = {
+        ...objectData,
+        id: objectId,
+        createdAt: now,
+        updatedAt: now,
+      };
+    }
+
+    // Single state update for all shapes (1 re-render instead of N)
+    setObjects((prev) => [...prev, ...newShapes]);
+
+    // Single Firebase write for all shapes
+    try {
+      const { update } = await import('firebase/database');
+      await update(ref(database), firebaseUpdates);
+      
+      // Capture undo snapshot AFTER successful creation
+      captureUndoSnapshot('create', ids);
+      
+      return ids;
+    } catch (error) {
+      console.error('Error creating objects in Firebase:', error);
+      // Rollback optimistic update on error
+      const idsSet = new Set(ids);
+      setObjects((prev) => prev.filter((obj) => !idsSet.has(obj.id)));
+      return [];
     }
   };
 
   // Update an existing object with Firebase integration
   const updateObject = async (id: string, updates: Partial<Shape>) => {
+    // Note: Undo snapshot should be captured by the caller before batch operations
+    // For single updates, caller should use captureUndoSnapshot manually
+    // Don't auto-capture here to avoid overwriting batch operation snapshots
+    
     const now = Date.now();
     
     // Optimistic update: update local state immediately
@@ -181,18 +350,27 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
   };
 
   // Delete an object with Firebase integration
-  const deleteObject = async (id: string) => {
-    // Optimistic update: remove from local state immediately
-    setObjects((prev) => prev.filter((obj) => obj.id !== id));
+  // Delete one or multiple objects
+  const deleteObject = async (ids: string | string[]) => {
+    // Normalize to array
+    const idsToDelete = Array.isArray(ids) ? ids : [ids];
     
-    // Clear selection if the deleted object was selected
-    setSelectedIds((prev) => prev.filter((selectedId) => selectedId !== id));
+    // Capture undo snapshot BEFORE deleting
+    captureUndoSnapshot('delete', idsToDelete);
+    
+    // Optimistic update: remove from local state immediately
+    setObjects((prev) => prev.filter((obj) => !idsToDelete.includes(obj.id)));
+    
+    // Clear selection if any deleted objects were selected
+    setSelectedIds((prev) => prev.filter((selectedId) => !idsToDelete.includes(selectedId)));
 
-    // Remove from Firebase
+    // Remove from Firebase (batch delete)
     try {
-      await deleteFirebaseObject(canvasId, id);
+      await Promise.all(
+        idsToDelete.map(id => deleteFirebaseObject(canvasId, id))
+      );
     } catch (error) {
-      console.error('Error deleting object from Firebase:', error);
+      console.error('Error deleting objects from Firebase:', error);
       // Note: Firebase listener will restore correct state
     }
   };
@@ -228,6 +406,11 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
   const deleteSelected = async () => {
     const idsToDelete = [...selectedIds];
     
+    if (idsToDelete.length === 0) return;
+    
+    // Capture undo snapshot BEFORE deleting
+    captureUndoSnapshot('delete', idsToDelete);
+    
     // Clear selection immediately
     setSelectedIds([]);
     
@@ -250,14 +433,22 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
     selectedIds,
     isLoading,
     mode,
+    undoState,
+    performanceMode,
     setMode,
+    setPerformanceMode,
     createObject,
+    createObjectsBatch,
     updateObject,
     deleteObject,
     selectObject,
     selectMultiple,
     clearSelection,
     deleteSelected,
+    undo,
+    captureUndoSnapshot,
+    clearUndo,
+    setDisableUndoCapture,
   };
 
   return (

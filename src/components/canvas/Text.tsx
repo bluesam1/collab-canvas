@@ -6,6 +6,7 @@ import type { Text as TextType, CanvasMode } from '../../types';
 interface TextProps {
   text: TextType;
   isSelected: boolean;
+  isDraggable?: boolean;
   onClick: (id: string, shiftKey?: boolean) => void;
   onDragStart?: (id: string) => void;
   onDragEnd: (id: string, x: number, y: number) => void;
@@ -18,7 +19,8 @@ interface TextProps {
 
 export const Text = memo(function Text({ 
   text, 
-  isSelected, 
+  isSelected,
+  isDraggable,
   onClick, 
   onDragStart,
   onDragMove, 
@@ -69,7 +71,7 @@ export const Text = memo(function Text({
       const scale = node.scaleX(); // scaleX and scaleY are the same due to keepRatio=true
       
       // Calculate new font size
-      const newFontSize = Math.max(8, Math.min(72, text.fontSize * scale));
+      const newFontSize = Math.max(6, Math.min(500, text.fontSize * scale));
       
       // Get current position (which is the center)
       const centerX = node.x();
@@ -113,9 +115,9 @@ export const Text = memo(function Text({
       // Since keepRatio=true, scaleX === scaleY, so we only need to check one
       let currentScale = Math.abs(node.scaleX());
       
-      // Constrain scale to keep font size within 8-72pt range
-      const minScale = 8 / text.fontSize;
-      const maxScale = 72 / text.fontSize;
+      // Constrain scale to keep font size within 6-500pt range
+      const minScale = 6 / text.fontSize;
+      const maxScale = 500 / text.fontSize;
       
       let wasConstrained = false;
       let finalScale = currentScale;
@@ -237,6 +239,8 @@ export const Text = memo(function Text({
       // Reset to the mode-based cursor
       if (mode === 'pan') {
         container.style.cursor = 'grab';
+      } else if (mode === 'select') {
+        container.style.cursor = 'default';
       } else {
         container.style.cursor = 'crosshair';
       }
@@ -286,7 +290,7 @@ export const Text = memo(function Text({
         fontFamily="Arial, sans-serif"
         fontStyle={`${text.bold ? 'bold' : ''} ${text.italic ? 'italic' : ''}`.trim() || 'normal'}
         textDecoration={text.underline ? 'underline' : ''}
-        draggable={isSelected && !isEditing}
+        draggable={(isDraggable !== undefined ? isDraggable : isSelected) && !isEditing}
         onClick={handleClick}
         onTap={handleClick}
         onDblClick={handleDoubleClick}

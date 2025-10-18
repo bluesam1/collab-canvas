@@ -25,6 +25,8 @@ export interface AuthContextType {
   signInWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   clearError: () => void;
+  changeUserColor?: (color: string) => void;
+  availableColors?: string[];
 }
 
 // Canvas types
@@ -137,20 +139,38 @@ export interface PresenceState {
   cursors: Map<string, CursorPosition>;
 }
 
+// Undo types
+export type UndoOperationType = 'create' | 'delete' | 'modify';
+
+export interface UndoState {
+  operation: UndoOperationType;
+  shapesSnapshot: Shape[]; // Full snapshot of affected shapes BEFORE the operation
+  affectedIds: string[]; // IDs of shapes that were affected
+  timestamp: number;
+}
+
 // Canvas context type
 export interface CanvasContextType {
   objects: Shape[];
   selectedIds: string[];
   isLoading: boolean;
   mode: CanvasMode;
+  undoState: UndoState | null;
+  performanceMode: boolean;
   setMode: (mode: CanvasMode) => void;
-  createObject: (object: Omit<Rectangle, 'id' | 'createdAt' | 'updatedAt'> | Omit<Circle, 'id' | 'createdAt' | 'updatedAt'> | Omit<Line, 'id' | 'createdAt' | 'updatedAt'> | Omit<Text, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  setPerformanceMode: (enabled: boolean) => void;
+  createObject: (object: Omit<Rectangle, 'id' | 'createdAt' | 'updatedAt'> | Omit<Circle, 'id' | 'createdAt' | 'updatedAt'> | Omit<Line, 'id' | 'createdAt' | 'updatedAt'> | Omit<Text, 'id' | 'createdAt' | 'updatedAt'>) => Promise<string | null>;
+  createObjectsBatch: (objects: Array<Omit<Rectangle, 'id' | 'createdAt' | 'updatedAt'> | Omit<Circle, 'id' | 'createdAt' | 'updatedAt'> | Omit<Line, 'id' | 'createdAt' | 'updatedAt'> | Omit<Text, 'id' | 'createdAt' | 'updatedAt'>>) => Promise<string[]>;
   updateObject: (id: string, updates: Partial<Shape>) => void;
-  deleteObject: (id: string) => void;
+  deleteObject: (ids: string | string[]) => void;
   selectObject: (id: string | null, addToSelection?: boolean) => void;
   selectMultiple: (ids: string[]) => void;
   clearSelection: () => void;
   deleteSelected: () => void;
+  undo: () => void;
+  captureUndoSnapshot: (operation: UndoOperationType, affectedIds: string[]) => void;
+  clearUndo: () => void;
+  setDisableUndoCapture: (disabled: boolean) => void;
 }
 
 // Presence context type
