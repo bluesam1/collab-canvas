@@ -589,21 +589,25 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
           const worldPos = screenToWorld(pos.x, pos.y);
 
           if (mode === 'rectangle' || mode === 'circle' || mode === 'line') {
-            // Shape creation modes: Start creating shape (works even over existing shapes)
-            setNewShapeStart(worldPos);
-            setIsCreating(true);
+            // Shape creation modes: Only start creating on empty space to avoid conflicts with dragging
+            if (clickedOnEmpty) {
+              setNewShapeStart(worldPos);
+              setIsCreating(true);
+            }
           } else if (mode === 'text') {
-            // Text mode: Show text modal
-            setTextModalPosition(worldPos);
-            setTextModalValue('');
-            setTextModalFontSize(16);
-            setTextModalBold(false);
-            setTextModalItalic(false);
-            setTextModalUnderline(false);
-            setTextModalColor(selectedColor); // Use toolbar's selected color
-            setEditingTextId(null);
-            setTextModalKey(prev => prev + 1); // Force modal remount
-            setIsTextModalOpen(true);
+            // Text mode: Only show text modal on empty space to avoid conflicts with dragging
+            if (clickedOnEmpty) {
+              setTextModalPosition(worldPos);
+              setTextModalValue('');
+              setTextModalFontSize(16);
+              setTextModalBold(false);
+              setTextModalItalic(false);
+              setTextModalUnderline(false);
+              setTextModalColor(selectedColor); // Use toolbar's selected color
+              setEditingTextId(null);
+              setTextModalKey(prev => prev + 1); // Force modal remount
+              setIsTextModalOpen(true);
+            }
           } else if (mode === 'select' && clickedOnEmpty) {
             // Select mode: Start selection box only on empty space
             setSelectionBoxStart(worldPos);

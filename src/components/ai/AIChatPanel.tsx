@@ -30,6 +30,7 @@ export const AIChatPanel = ({
   const panelRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const prevLoadingRef = useRef<boolean>(false);
 
   // Update command when initialCommand changes
   useEffect(() => {
@@ -51,6 +52,20 @@ export const AIChatPanel = ({
       }, 100);
     }
   }, [isOpen]);
+
+  // Focus and select text after AI processing completes
+  useEffect(() => {
+    // Only focus/select when loading transitions from true to false (processing just completed)
+    const wasLoading = prevLoadingRef.current;
+    prevLoadingRef.current = isLoading;
+    
+    if (wasLoading && !isLoading && isOpen && textareaRef.current) {
+      setTimeout(() => {
+        textareaRef.current?.focus();
+        textareaRef.current?.select();
+      }, 100);
+    }
+  }, [isLoading, isOpen]);
 
   // Rollodex-style example rotation (pause on hover)
   useEffect(() => {
@@ -135,6 +150,7 @@ export const AIChatPanel = ({
     e.preventDefault();
     if (command.trim() && !isLoading) {
       onSubmit(command.trim());
+      // Focus and select will happen automatically when isLoading changes back to false
     }
   };
 
@@ -144,6 +160,7 @@ export const AIChatPanel = ({
       e.preventDefault();
       if (command.trim() && !isLoading) {
         onSubmit(command.trim());
+        // Focus and select will happen automatically when isLoading changes back to false
       }
     }
     // Allow Shift+Enter for new line (default textarea behavior)
