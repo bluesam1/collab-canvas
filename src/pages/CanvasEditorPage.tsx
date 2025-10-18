@@ -1,13 +1,19 @@
-import { useContext, useState, useEffect, useRef } from 'react';
+import { useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { UserContext } from '../contexts/UserContext';
 import { Canvas } from '../components/canvas/Canvas';
 import { Toolbar } from '../components/toolbar/Toolbar';
 import { OnlineUsers } from '../components/presence/OnlineUsers';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
+import { AIAssistantButton } from '../components/ai/AIAssistantButton';
+import { AIChatPanel } from '../components/ai/AIChatPanel';
+import { AIInfoModal } from '../components/ai/AIInfoModal';
 import { getCanvas, updateLastOpened, renameCanvas } from '../utils/canvases';
 import { useToast } from '../hooks/useToast';
 import { useCanvasList } from '../hooks/useCanvasList';
+import { useCanvas } from '../hooks/useCanvas';
+import { processAICommand } from '../services/ai';
+import { executeToolCalls } from '../services/aiTools';
 
 export function CanvasEditorPage() {
   const { canvasId } = useParams<{ canvasId: string }>();
@@ -15,6 +21,7 @@ export function CanvasEditorPage() {
   const authContext = useContext(UserContext);
   const { showError, showSuccess } = useToast();
   const { refreshCanvases } = useCanvasList();
+  const canvasContext = useCanvas();
   // Initialize color from localStorage or use default
   const [selectedColor, setSelectedColor] = useState(() => {
     const savedColor = localStorage.getItem('collab-canvas-selected-color');
@@ -31,7 +38,21 @@ export function CanvasEditorPage() {
   const [editedName, setEditedName] = useState('');
   const [isOwner, setIsOwner] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
+  const [showAIPanel, setShowAIPanel] = useState(false);
+  const [showAIInfoModal, setShowAIInfoModal] = useState(false);
+  const [aiCommand, setAiCommand] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const frameShapesFuncRef = useRef<((shapes: any[]) => void) | null>(null);
+  const deleteWithEffectFuncRef = useRef<(() => void) | null>(null);
+  const zoomControlsRef = useRef<{ zoomIn: () => void; zoomOut: () => void; zoomReset: () => void } | null>(null);
+  const [waitingForShapeIds, setWaitingForShapeIds] = useState<string[]>([]);
+  const [viewportTransform, setViewportTransform] = useState({ 
+    x: 0, 
+    y: 0, 
+    scale: 1 
+  });
 
   // Handle color change and save to localStorage
   const handleColorChange = (color: string) => {
@@ -45,11 +66,120 @@ export function CanvasEditorPage() {
     localStorage.setItem('collab-canvas-line-thickness', thickness.toString());
   };
 
+  // Calculate viewport center in world coordinates
+  const getViewportCenter = () => {
+    // Get viewport center in screen coordinates
+    const screenCenterX = window.innerWidth / 2;
+    const screenCenterY = window.innerHeight / 2;
+    
+    // Convert to world coordinates using inverse transformation
+    // Formula: worldCoord = (screenCoord - stagePosition) / scale
+    // This accounts for pan (stagePosition) and zoom (scale)
+    const scale = viewportTransform.scale || 1; // Prevent division by zero
+    const worldCenterX = (screenCenterX - viewportTransform.x) / scale;
+    const worldCenterY = (screenCenterY - viewportTransform.y) / scale;
+    
+    // Clamp to canvas bounds (5000x5000)
+    const clampedX = Math.max(0, Math.min(5000, worldCenterX));
+    const clampedY = Math.max(0, Math.min(5000, worldCenterY));
+    
+    return { x: clampedX, y: clampedY };
+  };
+
+  // Handle viewport changes (memoized to prevent infinite re-renders)
+  const handleViewportChange = useCallback((x: number, y: number, scale: number) => {
+    setViewportTransform({ x, y, scale });
+  }, []);
+
+  // Handle frame shapes ready callback (memoized to prevent infinite re-renders)
+  const handleFrameShapesReady = useCallback((fn: (shapes: any[]) => void) => {
+    frameShapesFuncRef.current = fn;
+  }, []);
+
+  // Handle delete with effect ready callback (memoized to prevent infinite re-renders)
+  const handleDeleteWithEffectReady = useCallback((fn: () => void) => {
+    deleteWithEffectFuncRef.current = fn;
+  }, []);
+
+  // Handle zoom control ready callback (memoized to prevent infinite re-renders)
+  const handleZoomControlReady = useCallback((controls: { zoomIn: () => void; zoomOut: () => void; zoomReset: () => void }) => {
+    zoomControlsRef.current = controls;
+  }, []);
+
+  // Zoom handlers
+  const handleZoomIn = () => {
+    if (zoomControlsRef.current) {
+      zoomControlsRef.current.zoomIn();
+    }
+  };
+
+  const handleZoomOut = () => {
+    if (zoomControlsRef.current) {
+      zoomControlsRef.current.zoomOut();
+    }
+  };
+
+  const handleZoomReset = () => {
+    if (zoomControlsRef.current) {
+      zoomControlsRef.current.zoomReset();
+    }
+  };
+
+  // Handle frame selected shapes
+  const handleFrameSelected = () => {
+    if (!frameShapesFuncRef.current || !canvasContext || canvasContext.selectedIds.length === 0) {
+      return;
+    }
+
+    // Get the selected shapes
+    const selectedShapes = canvasContext.objects.filter(obj =>
+      canvasContext.selectedIds.includes(obj.id)
+    );
+
+    // Frame them
+    if (selectedShapes.length > 0) {
+      frameShapesFuncRef.current(selectedShapes);
+    }
+  };
+
+  // Watch for AI-created shapes to appear in objects array
+  useEffect(() => {
+    if (waitingForShapeIds.length === 0 || !canvasContext) return;
+
+    // Check if all waiting IDs have appeared
+    const existingIds = waitingForShapeIds.filter(id =>
+      canvasContext.objects.some(obj => obj.id === id)
+    );
+
+    if (existingIds.length === waitingForShapeIds.length) {
+      // Clear waiting state
+      setWaitingForShapeIds([]);
+
+      // Select and frame the shapes
+      canvasContext.clearSelection();
+      setTimeout(() => {
+        canvasContext.selectMultiple(existingIds);
+        
+        // Frame the shapes
+        setTimeout(() => {
+          const affectedShapes = canvasContext.objects.filter(obj => 
+            existingIds.includes(obj.id)
+          );
+          if (affectedShapes.length > 0) {
+            window.dispatchEvent(new CustomEvent('frame-shapes', { 
+              detail: { shapes: affectedShapes } 
+            }));
+          }
+        }, 50);
+      }, 10);
+    }
+  }, [canvasContext?.objects, waitingForShapeIds, canvasContext]);
+
   if (!authContext || !authContext.user) {
     return null;
   }
 
-  const { user, logout } = authContext;
+  const { user } = authContext;
 
   // Fetch canvas data and verify it exists
   useEffect(() => {
@@ -145,6 +275,247 @@ export function CanvasEditorPage() {
     }
   }, [isEditingName]);
 
+  // AI handlers
+  const handleAISubmit = async (command: string) => {
+    if (!canvasId || !canvasContext) return;
+
+    setAiLoading(true);
+    setAiError(null);
+
+    try {
+      // Get canvas state for AI context
+      const canvasState = canvasContext.objects.map((obj) => {
+        if (obj.type === 'rectangle') {
+          return {
+            id: obj.id,
+            type: obj.type,
+            x: obj.x,
+            y: obj.y,
+            width: obj.width,
+            height: obj.height,
+            fill: obj.fill,
+            rotation: obj.rotation,
+          };
+        } else if (obj.type === 'circle') {
+          return {
+            id: obj.id,
+            type: obj.type,
+            x: obj.centerX,
+            y: obj.centerY,
+            radius: obj.radius,
+            fill: obj.fill,
+          };
+        } else if (obj.type === 'line') {
+          // Convert line format to x1,y1,x2,y2 for AI
+          const x1 = obj.x;
+          const y1 = obj.y;
+          const angleRad = (obj.rotation * Math.PI) / 180;
+          const x2 = x1 + obj.width * Math.cos(angleRad);
+          const y2 = y1 + obj.width * Math.sin(angleRad);
+          return {
+            id: obj.id,
+            type: obj.type,
+            x: x1,
+            y: y1,
+            x1,
+            y1,
+            x2,
+            y2,
+            stroke: obj.stroke,
+            strokeWidth: obj.strokeWidth,
+          };
+        } else {
+          // text
+          return {
+            id: obj.id,
+            type: obj.type,
+            x: obj.x,
+            y: obj.y,
+            text: obj.text,
+            fontSize: obj.fontSize,
+            fill: obj.fill,
+          };
+        }
+      });
+
+        // Call AI Cloud Function
+        const response = await processAICommand({
+          command,
+          canvasId,
+          canvasState,
+          viewportCenter: getViewportCenter(), // Use actual viewport center
+          selectedShapeIds: canvasContext.selectedIds,
+          currentColor: selectedColor,
+          currentStrokeWidth: lineThickness,
+        });
+
+      if (response.success && response.toolCalls && response.toolCalls.length > 0) {
+        // Determine operation type for undo
+        const hasCreate = response.toolCalls.some(tc => 
+          tc.function.name.startsWith('create')
+        );
+        const hasDelete = response.toolCalls.some(tc => 
+          tc.function.name === 'deleteShapes'
+        );
+
+        // Determine primary operation type (priority: delete > create > modify)
+        let operationType: 'create' | 'delete' | 'modify' = 'modify';
+        if (hasDelete) {
+          operationType = 'delete';
+        } else if (hasCreate) {
+          operationType = 'create';
+        }
+
+        // For delete operations, capture snapshot BEFORE deletion
+        if (hasDelete) {
+          const deleteToolCall = response.toolCalls.find(
+            tc => tc.function.name === 'deleteShapes'
+          );
+          
+          if (deleteToolCall) {
+            try {
+              const deleteArgs = JSON.parse(deleteToolCall.function.arguments);
+              const shapeIdsToDelete = deleteArgs.shapeIds as string[];
+
+              if (shapeIdsToDelete && shapeIdsToDelete.length > 0) {
+                // Capture undo snapshot BEFORE deletion (with shapes still existing)
+                canvasContext.captureUndoSnapshot('delete', shapeIdsToDelete);
+
+                // PREVIEW deletion: select shapes, frame them, wait, THEN delete WITH POOF
+                // 1. Select the shapes that will be deleted
+                canvasContext.selectMultiple(shapeIdsToDelete);
+
+                // 2. Frame/center the canvas on them
+                const shapesToFrame = canvasContext.objects.filter(obj =>
+                  shapeIdsToDelete.includes(obj.id)
+                );
+                if (shapesToFrame.length > 0 && frameShapesFuncRef.current) {
+                  frameShapesFuncRef.current(shapesToFrame);
+                }
+
+                // 3. Wait 1 second so canvas animation completes and user can see what's being deleted
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                // 4. Delete with poof effect (undo snapshot is automatically captured by deleteObject)
+                if (deleteWithEffectFuncRef.current) {
+                  deleteWithEffectFuncRef.current();
+                } else {
+                  // Fallback to regular delete if poof not available
+                  canvasContext.deleteObject(shapeIdsToDelete);
+                }
+
+                // Show success toast with undo button
+                const count = shapeIdsToDelete.length;
+                showSuccess(
+                  `Done! ${count} shape${count !== 1 ? 's' : ''} deleted.`,
+                  5000, // 5 seconds
+                  'Undo',
+                  handleAIUndo
+                );
+                setAiCommand('');
+                return; // Exit early since we handled delete
+              }
+            } catch (error) {
+              console.error('Error previewing deletion:', error);
+              // Continue with regular deletion if preview fails
+            }
+          }
+        }
+
+        // For create/modify operations, capture snapshot BEFORE execution (for modify) or AFTER (for create)
+        let shapesBeforeOperation: typeof canvasContext.objects = [];
+        if (operationType === 'modify') {
+          // For modify, we need to capture the current state of shapes that will be modified
+          // Get all affected shape IDs from tool calls
+          const modifyToolCalls = response.toolCalls.filter(tc =>
+            ['moveShapes', 'resizeShapes', 'rotateShapes', 'changeColor', 'arrangeInGrid', 'alignShapes', 'distributeShapes'].includes(tc.function.name)
+          );
+          const affectedIdsBeforeModify: string[] = [];
+          for (const tc of modifyToolCalls) {
+            try {
+              const args = JSON.parse(tc.function.arguments);
+              if (args.shapeIds) {
+                affectedIdsBeforeModify.push(...args.shapeIds);
+              }
+            } catch (error) {
+              console.error('Error parsing tool call arguments:', error);
+            }
+          }
+          if (affectedIdsBeforeModify.length > 0) {
+            shapesBeforeOperation = canvasContext.objects.filter(obj =>
+              affectedIdsBeforeModify.includes(obj.id)
+            );
+          }
+        }
+
+        // Disable auto-capture during AI operations
+        canvasContext.setDisableUndoCapture(true);
+
+        // Execute tool calls
+        const affectedShapeIds = await executeToolCalls(
+          response.toolCalls,
+          canvasContext,
+          user.uid
+        );
+
+        // Re-enable auto-capture
+        canvasContext.setDisableUndoCapture(false);
+
+        console.log('🎯 AI created/modified shape IDs:', affectedShapeIds);
+
+        // Check if any shapes were actually affected
+        if (affectedShapeIds.length === 0) {
+          setAiError('Command processed, but no shapes were created or modified.');
+          return;
+        }
+
+        // Manually capture undo snapshot after AI operations complete
+        if (operationType === 'create') {
+          // For create, capture AFTER creation (shapes now exist)
+          canvasContext.captureUndoSnapshot('create', affectedShapeIds);
+        } else if (operationType === 'modify' && shapesBeforeOperation.length > 0) {
+          // For modify, use the snapshot we captured BEFORE modification
+          canvasContext.captureUndoSnapshot('modify', affectedShapeIds);
+        }
+
+        // For create/modify operations, wait for shapes to appear and then select them
+        setWaitingForShapeIds(affectedShapeIds);
+
+        // Show success toast with undo button
+        const count = affectedShapeIds.length;
+        showSuccess(
+          `Done! ${count} shape${count !== 1 ? 's' : ''} created/modified.`,
+          5000, // 5 seconds
+          'Undo',
+          handleAIUndo
+        );
+        setAiCommand('');
+      } else if (response.success && (!response.toolCalls || response.toolCalls.length === 0)) {
+        // AI responded but didn't generate any tool calls
+        setAiError("I didn't understand how to process that command. Try being more specific or use the info button (?) to see examples.");
+      } else {
+        // Other error
+        setAiError(response.error || 'Failed to process command');
+      }
+    } catch (error: any) {
+      console.error('AI command error:', error);
+      setAiError(error.message || 'Something went wrong. Please try again.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleAIExampleClick = (example: string) => {
+    setAiCommand(example);
+    setShowAIPanel(true);
+  };
+
+  const handleAIUndo = useCallback(() => {
+    if (canvasContext) {
+      canvasContext.undo();
+    }
+  }, [canvasContext]);
+
   if (isLoading) {
     return (
       <div className="relative w-full h-screen overflow-hidden">
@@ -203,14 +574,16 @@ export function CanvasEditorPage() {
             </div>
           </div>
           <div className="flex items-center gap-4">
+            {/* AI Assistant Button */}
+            <AIAssistantButton 
+              onClick={() => {
+                setShowAIPanel(true);
+                setAiError(null); // Clear previous error
+              }}
+              disabled={false}
+            />
             {/* Online Users - positioned in top-right */}
             <OnlineUsers />
-            <button
-              onClick={logout}
-              className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-            >
-              Logout
-            </button>
           </div>
         </div>
       </header>
@@ -224,13 +597,41 @@ export function CanvasEditorPage() {
         showInfo={showInfo}
         onToggleInfo={() => setShowInfo(!showInfo)}
         onBackToCanvasList={handleBackToCanvasList}
+        onFrameSelected={handleFrameSelected}
+        onDeleteSelected={() => deleteWithEffectFuncRef.current?.()}
+        currentZoom={viewportTransform.scale}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
+        onZoomReset={handleZoomReset}
       />
 
       {/* Canvas - full screen */}
       <Canvas 
         selectedColor={selectedColor} 
         lineThickness={lineThickness}
-        showInfo={showInfo} 
+        showInfo={showInfo}
+        onFrameShapesReady={handleFrameShapesReady}
+        onViewportChange={handleViewportChange}
+        onDeleteWithEffectReady={handleDeleteWithEffectReady}
+        onZoomControlReady={handleZoomControlReady}
+      />
+
+      {/* AI Chat Panel */}
+      <AIChatPanel
+        isOpen={showAIPanel}
+        onClose={() => setShowAIPanel(false)}
+        onSubmit={handleAISubmit}
+        isLoading={aiLoading}
+        error={aiError}
+        onOpenInfo={() => setShowAIInfoModal(true)}
+        initialCommand={aiCommand}
+      />
+
+      {/* AI Info Modal */}
+      <AIInfoModal
+        isOpen={showAIInfoModal}
+        onClose={() => setShowAIInfoModal(false)}
+        onExampleClick={handleAIExampleClick}
       />
     </div>
   );

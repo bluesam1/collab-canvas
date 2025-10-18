@@ -12,6 +12,7 @@ A real-time collaborative canvas application where multiple users can create, se
 
 ## ✨ Features
 
+- 🤖 **AI Canvas Agent**: Create and manipulate shapes using natural language commands powered by GPT-4
 - 📋 **Multiple Canvases**: Create and manage unlimited canvases with organized list view
 - 🔗 **URL-Based Sharing**: Share canvases instantly by copying the link - no invite system needed
 - 🎨 **Real-time Collaboration**: See other users' changes instantly (<100ms sync)
@@ -21,6 +22,7 @@ A real-time collaborative canvas application where multiple users can create, se
 - 🔲 **Multi-Select**: Select multiple shapes using 5 methods (click, Shift+click, drag-box, Ctrl/Cmd+A, Select mode)
 - 🔄 **Transform Operations**: Resize and rotate shapes with intuitive handles and controls
 - 🎯 **Advanced Manipulation**: Move, delete, change colors, and adjust line thickness for single or multiple shapes
+- 📐 **Smart View Control**: Auto-frame selected shapes or AI-generated content with smooth animations
 - 👥 **Presence System**: See who's online with colored indicators per canvas
 - 🔒 **Secure Authentication**: Email link and Google Sign-In support
 - 📱 **Responsive Canvas**: Pan and zoom with smooth 60 FPS animations
@@ -32,7 +34,8 @@ A real-time collaborative canvas application where multiple users can create, se
 - **Frontend**: React 19, TypeScript, Vite
 - **Canvas**: Konva, React-Konva
 - **Routing**: React Router DOM v7
-- **Backend**: Firebase Realtime Database
+- **Backend**: Firebase Realtime Database, Firebase Cloud Functions
+- **AI**: OpenAI GPT-4 with Agents SDK (function calling)
 - **Authentication**: Firebase Auth (Email Link & Google Sign-In)
 - **Styling**: Tailwind CSS v4
 - **Icons**: Lucide React
@@ -204,8 +207,9 @@ The app will be available at `http://localhost:5173`
 
 ## Development Scripts
 
+### Frontend Scripts
 ```bash
-npm run dev          # Start development server
+npm run dev          # Start Vite dev server (frontend)
 npm run build        # Build for production
 npm run preview      # Preview production build
 npm run test         # Run tests
@@ -213,8 +217,95 @@ npm run test -- --ui # Run tests with UI
 npm run lint         # Run ESLint
 ```
 
+### Firebase Functions Scripts
+```bash
+# From project root:
+npm run emulators      # Start Firebase emulators (functions, auth, database)
+npm run functions:dev  # Alias for emulators
+npm run functions:build # Build Firebase Functions
+
+# From functions/ directory:
+cd functions
+npm run dev            # Start Firebase emulators
+npm run emulators      # Start Firebase emulators
+npm run build          # Build TypeScript functions
+npm run test:ai        # Run AI integration tests (watch mode)
+npm run test:ai:run    # Run AI integration tests (single run)
+```
+
+### Running Full Local Development
+To test AI features locally, you need both the frontend dev server AND Firebase emulators:
+
+```bash
+# Terminal 1: Start Firebase emulators
+npm run emulators
+
+# Terminal 2: Start frontend dev server
+npm run dev
+```
+
+Then open `http://localhost:5173` and ensure your `.env` file has:
+```
+VITE_USE_FUNCTIONS_EMULATOR=true
+```
+
+## 🤖 AI Canvas Agent
+
+The AI Canvas Agent is a powerful natural language interface that allows you to create and manipulate shapes using simple text commands.
+
+### Features
+- **Natural Language Commands**: Use GPT-4 to understand and execute canvas operations
+- **14 AI Tools**: Create, move, resize, rotate, color, delete, arrange, align, and distribute shapes
+- **Smart Positioning**: AI automatically positions shapes in your current viewport
+- **Auto-Selection & Framing**: Created shapes are automatically selected and framed in view
+- **Context-Aware**: AI understands your current canvas state, selected shapes, and color preferences
+- **Two Modes**:
+  - **Auto Mode**: Commands execute immediately
+  - **Confirm Mode**: Preview changes before applying
+
+### Example Commands
+- **Create**: "Create 3 blue rectangles in a row", "Add a red circle with radius 50"
+- **Manipulate**: "Move the red rectangle to the center", "Make all circles twice as large"
+- **Arrange**: "Arrange all shapes in a 3x3 grid", "Align selected shapes to the left"
+- **Complex**: "Create a login form", "Build a navigation bar with 4 menu items"
+
+### Local Development with AI Features
+
+To develop and test AI features locally, you need both the frontend and Firebase emulators running:
+
+```bash
+# Terminal 1: Start Firebase Emulators
+npm run emulators
+# This starts Functions (5001), Auth (9099), Database (9000)
+
+# Terminal 2: Start frontend dev server
+npm run dev
+# Open http://localhost:5173
+```
+
+**Requirements**:
+1. Add your OpenAI API key to `functions/.env.local`:
+   ```
+   OPENAI_API_KEY=sk-...
+   OPENAI_MODEL=gpt-4-turbo-preview
+   ```
+2. Ensure `.env` has emulator enabled:
+   ```
+   VITE_USE_FUNCTIONS_EMULATOR=true
+   ```
+
+### AI Architecture
+
+The AI system uses a secure server-side architecture:
+- **Client**: React UI with chat panel and tool execution
+- **Server**: Firebase Cloud Functions with OpenAI GPT-4
+- **Security**: API keys never exposed to client
+- **Tools**: 14 structured functions for canvas operations
+- **Performance**: Sub-2 second response time target (90%+ of commands)
+
 ## Testing
 
+### Frontend Tests
 ```bash
 # Run all tests
 npm test
@@ -228,6 +319,25 @@ npm test -- --watch
 # Run tests with UI
 npm test -- --ui
 ```
+
+### AI Agent Tests
+```bash
+# Navigate to functions directory
+cd functions
+
+# Run AI tool selection tests (requires OpenAI API key in functions/.env.local)
+npm run test:ai:run
+
+# Run tests in watch mode
+npm run test:ai
+```
+
+**Test Coverage:**
+- ✅ 20/20 AI tool selection tests passing (100%)
+- ✅ Tests all 14 AI tools with various commands
+- ✅ Validates batched creation, layouts, manipulations
+- ✅ No Firebase emulators required
+- 📄 See `functions/README_AI_TESTS.md` for details
 
 ## Project Structure
 
@@ -336,10 +446,26 @@ The `planning/` directory contains original design documents:
 15. **Pan Canvas**: Drag canvas in Pan mode to move around the workspace
 16. **Zoom Canvas**: Use mouse wheel to zoom in/out (0.1x to 5x)
 
+### AI Assistant
+17. **Open AI Assistant**: Click the sparkles icon (✨) in the top navigation
+18. **Natural Language Commands**: Type commands like:
+    - "Create 3 blue rectangles in a row"
+    - "Make a traffic light with red, yellow, and green circles"
+    - "Arrange all shapes in a 3x3 grid"
+    - "Change selected shapes to purple"
+19. **AI Tools**: The AI can create shapes, move them, resize, rotate, change colors, arrange in grids, align, distribute, and more
+20. **Smart Defaults**: When you don't specify colors or line widths, the AI uses your currently selected color and stroke width
+21. **Viewport-Aware**: AI creates shapes in the visible area you're looking at - pan/zoom to where you want them to appear
+22. **Auto-Selection & Framing**: AI-created shapes are automatically selected and framed in view for immediate editing
+
+### View Management
+23. **Frame Selected Shapes**: Click the Frame Selected button (📐) in the toolbar to automatically zoom and center the view around your selected shapes
+24. **Keyboard Shortcuts**: Use V for Pan, S for Select, R for Rectangle, C for Circle, L for Line, T for Text
+
 ### Collaboration
-17. **See Collaborators**: View online users in the top-right corner
-18. **See Cursors**: Watch other users' cursors move in real-time
-19. **Real-time Sync**: All changes appear instantly for everyone
+25. **See Collaborators**: View online users in the top-right corner
+26. **See Cursors**: Watch other users' cursors move in real-time
+27. **Real-time Sync**: All changes appear instantly for everyone (including AI-generated shapes)
 
 ## Features Details
 
@@ -900,12 +1026,13 @@ This is an MVP project built for learning purposes. Contributions welcome!
 
 ## 📊 Project Status
 
-- **Current Version**: v1.2 (MVP + Enhanced Collaboration Features)
-- **Status**: ✅ Complete and deployed
-- **Last Updated**: October 16, 2025
+- **Current Version**: v1.3-dev (AI Canvas Agent in development)
+- **Status**: 🚧 Active Development
+- **Last Updated**: October 18, 2025
 - **Build Status**: ✅ Passing
 - **Test Coverage**: >70%
-- **Live URL**: [https://collab-canvas-2ba2e.web.app/](https://collab-canvas-2ba2e.web.app/)
+- **Production URL**: [https://collab-canvas-2ba2e.web.app/](https://collab-canvas-2ba2e.web.app/) (v1.2)
+- **Dev Branch**: `ai-assistant-and-ux-fixes`
 
 ### Completed Milestones
 - ✅ PR #1: Project setup and configuration
@@ -931,6 +1058,13 @@ This is an MVP project built for learning purposes. Contributions welcome!
   - Rotation with center-based origin and angle snapping
   - Performance optimizations for multi-object operations
   - UX enhancements (Pan mode, Select mode, keyboard shortcuts)
+- 🚧 Feature: AI Canvas Agent (Priority #1) - IN PROGRESS
+  - Firebase Cloud Functions backend with OpenAI GPT-4
+  - 14 AI tools for canvas operations (creation, manipulation, layout, context)
+  - Natural language interface with chat panel
+  - Smart positioning and auto-framing
+  - Auto/Confirm modes with localStorage persistence
+  - Sub-2 second response time target (90%+ commands)
 
 ## 📝 License
 

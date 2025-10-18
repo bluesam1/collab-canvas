@@ -1,11 +1,84 @@
 # Active Context
 
 ## Current Status
-**Date**: October 16, 2025  
-**Phase**: Stable - All Core Features + Multi-Select & Transforms Complete  
-**Active Work**: No active development - Project ready for next phase
+**Date**: October 18, 2025  
+**Phase**: Active Development - AI Canvas Agent (Priority #1)  
+**Active Work**: Building AI-powered natural language interface for canvas operations
 
 ## Recent Changes
+
+### In Progress: AI Canvas Agent (Priority #1)
+**Started**: October 18, 2025  
+**Impact**: Major feature - AI-powered natural language interface for canvas operations  
+**PRD**: `tasks/prd-ai-canvas-agent.md`  
+**Tasks**: `tasks/tasks-prd-ai-canvas-agent.md`
+
+#### What's Being Built
+1. **AI Assistant UI** ✅ (Task 2.0 Complete)
+   - Floating chat panel with draggable positioning
+   - AI mode toggle (Auto vs Confirm modes)
+   - Information modal with categorized examples
+   - Confirmation panel for confirm mode
+   - Click-to-copy example commands
+
+2. **Firebase Cloud Functions Backend** ✅ (Task 1.0 Complete)
+   - Local development environment with Firebase Emulators
+   - OpenAI Agents SDK integration (GPT-4)
+   - Secure API key storage (server-side only)
+   - 14 AI tool schemas for function calling
+   - Cloud Function endpoint `processAICommand`
+   - Authentication verification
+   - Hot-reload for local development
+
+3. **AI Tools (14 Total)** ✅ (Task 4.0 Complete)
+   - **Creation**: createRectangle, createCircle, createLine, createText
+   - **Manipulation**: moveShapes, resizeShapes, rotateShapes, changeColor, deleteShapes
+   - **Layout**: arrangeInGrid, alignShapes, distributeShapes
+   - **Context**: getCanvasState, selectShapes
+   - All tools integrated with CanvasContext
+   - Focal point calculation for smart positioning
+   - Auto-selection of affected shapes
+
+4. **AI Mode System** (Task 5.0 - To Do)
+   - Auto mode: Execute commands immediately
+   - Confirm mode: Show preview, require approval
+   - LocalStorage persistence for mode preference
+   - Mode toggle component
+
+5. **Performance Testing** ⚡ (Task 6.0 - Critical for Rubric)
+   - Sub-2 second response time (90%+ of commands)
+   - 90%+ command success rate
+   - Real-time sync <100ms verification
+   - Performance test documentation
+
+#### Current Status
+- **Phase 1**: Foundation ✅ Complete
+  - Firebase Emulator Suite configured
+  - OpenAI client initialized server-side
+  - Local development workflow established
+  - Client connects to emulator in dev mode
+- **Phase 2**: Core Tools ✅ Complete
+  - All 14 AI tools implemented
+  - Tool execution dispatcher built
+  - Auto-selection functionality added
+- **Phase 3**: Layout & Complex Commands - Next Up
+- **Phase 4**: Polish & Error Handling - Upcoming
+- **Phase 5**: Performance Testing ⚡ - Critical final phase
+
+#### What's Working
+- Firebase Emulators running locally (functions, auth, database)
+- OpenAI SDK integrated in Cloud Functions
+- Client can call Cloud Function endpoint (emulator)
+- All 14 AI tools implemented and ready for testing
+- UI components built and styled
+- Auto-selection of AI-created shapes
+
+#### Next Steps
+1. Test full AI workflow locally with real API key
+2. Implement AI mode toggle (Auto/Confirm)
+3. Test complex commands (login form, nav bar, grids)
+4. Performance testing (sub-2s response time)
+5. Document test results for rubric compliance
 
 ### Completed: Multi-Select & Transform Operations (Priority #2)
 **Completed**: October 16, 2025  
@@ -248,19 +321,31 @@ All core MVP features working:
 - Deployed to Firebase Hosting
 
 ## Current Focus
-**Status**: Stable  
-**State**: All core features + multi-select & transforms complete
+**Status**: Active Development  
+**State**: Building AI Canvas Agent (Priority #1)
 
-CollabCanvas now supports multiple shape types (Rectangle, Circle, Line, Text) with comprehensive multi-select capabilities and transform operations (resize, rotate). The application features optimized performance for multi-object operations and an intuitive, modern UI. Ready for production use and future enhancements.
+Working on implementing natural language interface for canvas operations using OpenAI GPT-4. The AI will enable users to create and manipulate shapes using simple commands like "create 3 blue rectangles" or "arrange all shapes in a grid". Current focus is on integrating Firebase Cloud Functions with OpenAI Agents SDK and implementing the 14 AI tools.
+
+**Immediate Priorities**:
+1. Complete Task 3.22: Test full AI workflow with real OpenAI API key
+2. Implement Task 5.0: AI mode toggle (Auto/Confirm modes)
+3. Complete Task 6.0: Performance testing (sub-2s response, 90%+ success rate)
 
 ## Next Steps
-Potential future enhancements (see `productContext.md` for full roadmap):
+**Current Phase** (AI Canvas Agent):
+1. ✅ Task 1.0: Firebase Cloud Functions setup with emulators
+2. ✅ Task 2.0: UI components (chat panel, modals, toggle)
+3. ✅ Task 3.0: Cloud Function backend with OpenAI (mostly complete, needs testing)
+4. ✅ Task 4.0: All 14 AI tools implemented
+5. ⏳ Task 5.0: AI mode toggle with localStorage - Next Up
+6. ⏳ Task 6.0: Performance testing and rubric compliance - Critical
+
+**After AI Canvas Agent**:
 1. **Undo/Redo** - Implement command pattern for operation history
 2. **Copy/Paste** - Enable shape duplication across canvases
 3. **Shape Grouping** - Logical grouping of shapes that persist
 4. **Export/Import** - Export to PNG/SVG/PDF, import images
 5. **Layers & Z-Index** - Layer management and shape ordering
-6. **AI Canvas Agent** - Integrate AI agent for automated canvas operations
 
 ## Active Decisions & Considerations
 
@@ -287,17 +372,37 @@ Potential future enhancements (see `productContext.md` for full roadmap):
 20. **Selection Flexibility**: Objects selectable in any mode (not just Pan/Select) ✅
 21. **Stroke Width Control**: Toolbar button with flyout menu, persisted to localStorage ✅
 
+### AI Canvas Agent Decisions
+22. **AI Backend Architecture**: Firebase Cloud Functions with OpenAI Agents SDK (server-side) ✅
+23. **API Key Security**: Stored in Firebase Functions secrets, never exposed to client ✅
+24. **Local Development**: Firebase Emulator Suite for functions, auth, and database ✅
+25. **AI Model**: GPT-4 (gpt-4-turbo-preview) for reliability and function calling ✅
+26. **Tool Count**: 14 tools across 4 categories (creation, manipulation, layout, context) ✅
+27. **Response Time Target**: <2 seconds for 90%+ of commands (rubric requirement) ⚡
+28. **Success Rate Target**: 90%+ command success rate (rubric requirement) ⚡
+29. **AI Modes**: Auto mode (immediate execution) and Confirm mode (preview first) ✅
+30. **Mode Persistence**: LocalStorage with key 'ai-mode-preference' ✅
+31. **Smart Positioning**: Use viewport center (focal point) for shape placement ✅
+32. **Auto-Selection**: AI-created/modified shapes automatically selected after execution ✅
+33. **Color Defaults**: AI uses currently selected color and stroke width from toolbar ✅
+34. **View Management**: Auto-frame AI-generated shapes with smooth animation ✅
+
 ### Open Questions
-None - All core features are complete and stable
+**AI Canvas Agent**:
+1. Should confirmation mode show visual preview or text summary? (Decision: Text summary for MVP)
+2. Should AI have access to command history for context? (Decision: Out of scope for MVP)
+3. Rate limiting: 10 requests/minute sufficient? (Decision: Test and tune during Phase 5)
 
 ## Known Issues
 None reported. Application is stable.
 
 ## Development Environment
-- **Branch**: `main` (all features merged)
-- **Deployment**: Live at https://collab-canvas-2ba2e.web.app/
+- **Branch**: `ai-assistant-and-ux-fixes` (AI Canvas Agent feature branch)
+- **Deployment**: Development (not yet deployed to production)
 - **Build Status**: ✅ Passing
-- **Tests**: All passing (>70% coverage)
+- **Tests**: All passing (>70% coverage, AI tests pending)
+- **Local Dev**: Running Firebase Emulators (functions, auth, database)
+- **Emulator Ports**: Functions (5001), Auth (9099), Database (9000)
 
 ## Dependencies Status
 All dependencies up to date as of last check. No security vulnerabilities reported.

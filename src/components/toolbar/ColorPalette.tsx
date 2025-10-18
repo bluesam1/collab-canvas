@@ -1,4 +1,4 @@
-import { USER_COLORS } from '../../utils/colors';
+import { STANDARD_COLORS } from '../../utils/colors';
 
 interface ColorPaletteProps {
   selectedColor: string;
@@ -16,7 +16,7 @@ export function ColorPalette({ selectedColor, onColorSelect }: ColorPaletteProps
         Shape Color
       </label>
       <div className="flex gap-2">
-        {USER_COLORS.map((color) => (
+        {STANDARD_COLORS.map((color) => (
           <button
             key={color}
             onClick={() => handleColorClick(color)}

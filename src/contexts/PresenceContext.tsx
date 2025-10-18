@@ -3,7 +3,6 @@ import type { ReactNode } from 'react';
 import { UserContext } from './UserContext';
 import type { PresenceUser, CursorPosition, PresenceContextType } from '../types';
 import { subscribeToPresence, updateCursor as updateCursorFirebase, setUserPresence, updateUserPresence } from '../utils/firebase';
-import { getUserColor } from '../utils/colors';
 
 // Create the context
 export const PresenceContext = createContext<PresenceContextType | undefined>(undefined);
@@ -58,9 +57,8 @@ export const PresenceContextProvider = ({ children, canvasId }: PresenceContextP
         
         // Add to online users if they are online
         if (user.isOnline === true) {
-          // Assign color based on order of arrival (cycling through 5 colors)
-          const userIndex = userOrderRef.current.indexOf(userId);
-          const color = getUserColor(userIndex);
+          // Use the color from the user's presence data
+          const color = user.color || '#3B82F6';
           
           newOnlineUsers.set(userId, {
             uid: userId,
@@ -159,6 +157,22 @@ export const PresenceContextProvider = ({ children, canvasId }: PresenceContextP
       clearInterval(updateInterval);
     };
   }, [authContext?.user, authContext?.isAuthenticated]);
+
+  // Update presence color when user changes their color
+  useEffect(() => {
+    if (!authContext?.user || !authContext.isAuthenticated) {
+      return;
+    }
+
+    const user = authContext.user;
+    
+    // Update color in Firebase presence
+    updateUserPresence(canvasId, user.uid, {
+      color: user.color || '#3B82F6',
+    }).catch((error) => {
+      console.debug('Error updating color:', error);
+    });
+  }, [authContext?.user?.color, authContext?.isAuthenticated, canvasId]);
 
   // Update cursor position with throttling (trailing edge)
   const updateCursor = (position: { x: number; y: number }) => {

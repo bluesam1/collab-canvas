@@ -18,10 +18,15 @@ React App (Browser)
 │   ├── Canvas List (Cards, Modals, Search)
 │   ├── Canvas Editor (Konva Stage, Shapes, Cursors)
 │   ├── Toolbar (Mode buttons, Colors, Delete)
+│   ├── AI Assistant (Chat Panel, Info Modal, Confirm Panel)
 │   └── Common (Toast, Spinner, Dialogs)
+├── Services Layer
+│   ├── AI Service (Cloud Function client)
+│   └── AI Tools (14 canvas operation tools)
 └── Firebase Backend
     ├── Authentication (Email Link + Google)
     ├── Realtime Database (Objects, Presence, Canvases)
+    ├── Cloud Functions (AI Processing with OpenAI)
     └── Hosting (Deployment)
 ```
 
@@ -127,6 +132,41 @@ const colors = ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6'];
 const userColor = colors[userIndex % colors.length];
 ```
 
+### 8. AI Integration Architecture
+**Decision**: Firebase Cloud Functions + OpenAI Agents SDK (server-side)
+**Rationale**:
+- Keeps API keys secure (server-side only)
+- Leverages OpenAI function calling for structured operations
+- Firebase Emulators enable fast local development
+- Scales automatically with Firebase serverless functions
+- Client-side tool execution maintains optimistic updates
+
+**Pattern**:
+```typescript
+// Client: Call Cloud Function
+const response = await callCloudFunction('processAICommand', {
+  command: "create 3 blue rectangles",
+  canvasId, canvasState, viewportCenter
+});
+
+// Server: OpenAI processes command with function calling
+const aiResponse = await openai.chat.completions.create({
+  model: "gpt-4-turbo-preview",
+  messages: [...],
+  tools: [/* 14 tool schemas */],
+  tool_choice: "auto"
+});
+
+// Client: Execute tools locally (optimistic updates)
+for (const toolCall of response.toolCalls) {
+  executeTool(toolCall.function.name, toolCall.function.arguments);
+}
+```
+
+**Security**: API keys stored in Firebase Functions secrets, never exposed to client.
+
+**Local Development**: Firebase Emulator Suite runs functions locally with hot-reload.
+
 ## Component Relationships
 
 ### Context Hierarchy
@@ -177,6 +217,24 @@ User copies canvas URL
       → Canvas added to user's accessible list
       → Initialize CanvasContext and PresenceContext
       → Render canvas with all existing objects
+```
+
+#### AI Command Processing
+```
+User types "create 3 blue rectangles"
+  → AIChatPanel.tsx submit handler
+  → ai.ts service → Firebase Cloud Function (authenticated request)
+  → Cloud Function → OpenAI API with canvas context
+  → OpenAI returns function calls (createRectangle x3)
+  → Cloud Function returns tool calls to client
+  → aiTools.ts executes each tool:
+      → useCanvas().createObject() for each rectangle
+      → CanvasContext optimistic update
+      → Firebase writes (standard sync flow)
+  → Auto-select all created shapes
+  → Auto-frame selected shapes (smooth zoom/pan)
+  → Show success message in chat panel
+  → All remote clients see shapes via Firebase listeners
 ```
 
 ## Design Patterns in Use

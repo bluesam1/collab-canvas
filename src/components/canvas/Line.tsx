@@ -6,6 +6,7 @@ import type { Line as LineType, CanvasMode } from '../../types';
 interface LineProps {
   line: LineType;
   isSelected: boolean;
+  isDraggable?: boolean;
   onClick: (id: string, shiftKey?: boolean) => void;
   onDragStart?: (id: string) => void;
   onDragMove?: (id: string, x: number, y: number) => void;
@@ -16,7 +17,8 @@ interface LineProps {
 
 export const Line = memo(function Line({ 
   line, 
-  isSelected, 
+  isSelected,
+  isDraggable,
   onClick, 
   onDragStart,
   onDragMove,
@@ -27,6 +29,12 @@ export const Line = memo(function Line({
   const lineRef = useRef<Konva.Line>(null);
   const [isHovered, setIsHovered] = useState(false);
   const [isDraggingEndpoint, setIsDraggingEndpoint] = useState(false);
+
+  // Get current zoom scale for endpoint visibility
+  const stageScale = lineRef.current?.getStage()?.scaleX() || 1;
+  const zoomCompensatedRadius = 6 / stageScale; // Always 6 visual pixels
+  const zoomCompensatedStrokeWidth = 2 / stageScale; // Always 2 visual pixels
+  const hitAreaRadius = 12 / stageScale; // Larger hit area (12 visual pixels)
 
   // Calculate start and end points
   const rotationRad = ((line.rotation || 0) * Math.PI) / 180;
@@ -131,6 +139,8 @@ export const Line = memo(function Line({
       // Reset to the mode-based cursor
       if (mode === 'pan') {
         container.style.cursor = 'grab';
+      } else if (mode === 'select') {
+        container.style.cursor = 'default';
       } else {
         container.style.cursor = 'crosshair';
       }
@@ -158,9 +168,10 @@ export const Line = memo(function Line({
         strokeWidth={line.strokeWidth}
         hitStrokeWidth={Math.max(line.strokeWidth + 8, 12)}
         rotation={line.rotation || 0}
+        opacity={isSelected ? 0.7 : 1}
         lineCap="round"
         lineJoin="round"
-        draggable={isSelected && !isDraggingEndpoint}
+        draggable={(isDraggable !== undefined ? isDraggable : isSelected) && !isDraggingEndpoint}
         onClick={handleClick}
         onTap={handleClick}
         onDragStart={handleDragStartEvent}
@@ -178,17 +189,25 @@ export const Line = memo(function Line({
       {/* Custom endpoint handles */}
       {isSelected && showTransformer && (
         <>
-          {/* Start point handle */}
+          {/* Start point handle - invisible hit area */}
           <Circle
             x={startX}
             y={startY}
-            radius={6}
-            fill="#ffffff"
-            stroke="#3B82F6"
-            strokeWidth={2}
+            radius={hitAreaRadius}
+            fill="transparent"
             draggable={true}
-            onDragStart={() => setIsDraggingEndpoint(true)}
+            onMouseDown={(e) => {
+              e.cancelBubble = true; // Prevent canvas from handling this
+            }}
+            onClick={(e) => {
+              e.cancelBubble = true; // Prevent canvas click handlers
+            }}
+            onDragStart={(e) => {
+              e.cancelBubble = true;
+              setIsDraggingEndpoint(true);
+            }}
             onDragMove={(e) => {
+              e.cancelBubble = true;
               const stage = e.target.getStage();
               if (stage) {
                 const pointerPos = stage.getPointerPosition();
@@ -201,7 +220,10 @@ export const Line = memo(function Line({
                 }
               }
             }}
-            onDragEnd={handleEndpointDragEnd}
+            onDragEnd={(e) => {
+              e.cancelBubble = true;
+              handleEndpointDragEnd();
+            }}
             onMouseEnter={(e) => {
               const container = e.target.getStage()?.container();
               if (container) {
@@ -211,22 +233,42 @@ export const Line = memo(function Line({
             onMouseLeave={(e) => {
               const container = e.target.getStage()?.container();
               if (container && !isDraggingEndpoint) {
-                container.style.cursor = mode === 'pan' ? 'grab' : 'crosshair';
+                container.style.cursor = mode === 'pan' ? 'grab' : mode === 'select' ? 'default' : 'crosshair';
               }
             }}
           />
           
-          {/* End point handle */}
+          {/* Start point handle - visible circle */}
+          <Circle
+            x={startX}
+            y={startY}
+            radius={zoomCompensatedRadius}
+            fill="#ffffff"
+            stroke="#3B82F6"
+            strokeWidth={zoomCompensatedStrokeWidth}
+            listening={false}
+            perfectDrawEnabled={false}
+          />
+          
+          {/* End point handle - invisible hit area */}
           <Circle
             x={endX}
             y={endY}
-            radius={6}
-            fill="#ffffff"
-            stroke="#3B82F6"
-            strokeWidth={2}
+            radius={hitAreaRadius}
+            fill="transparent"
             draggable={true}
-            onDragStart={() => setIsDraggingEndpoint(true)}
+            onMouseDown={(e) => {
+              e.cancelBubble = true; // Prevent canvas from handling this
+            }}
+            onClick={(e) => {
+              e.cancelBubble = true; // Prevent canvas click handlers
+            }}
+            onDragStart={(e) => {
+              e.cancelBubble = true;
+              setIsDraggingEndpoint(true);
+            }}
             onDragMove={(e) => {
+              e.cancelBubble = true;
               const stage = e.target.getStage();
               if (stage) {
                 const pointerPos = stage.getPointerPosition();
@@ -239,7 +281,10 @@ export const Line = memo(function Line({
                 }
               }
             }}
-            onDragEnd={handleEndpointDragEnd}
+            onDragEnd={(e) => {
+              e.cancelBubble = true;
+              handleEndpointDragEnd();
+            }}
             onMouseEnter={(e) => {
               const container = e.target.getStage()?.container();
               if (container) {
@@ -249,9 +294,21 @@ export const Line = memo(function Line({
             onMouseLeave={(e) => {
               const container = e.target.getStage()?.container();
               if (container && !isDraggingEndpoint) {
-                container.style.cursor = mode === 'pan' ? 'grab' : 'crosshair';
+                container.style.cursor = mode === 'pan' ? 'grab' : mode === 'select' ? 'default' : 'crosshair';
               }
             }}
+          />
+          
+          {/* End point handle - visible circle */}
+          <Circle
+            x={endX}
+            y={endY}
+            radius={zoomCompensatedRadius}
+            fill="#ffffff"
+            stroke="#3B82F6"
+            strokeWidth={zoomCompensatedStrokeWidth}
+            listening={false}
+            perfectDrawEnabled={false}
           />
         </>
       )}
