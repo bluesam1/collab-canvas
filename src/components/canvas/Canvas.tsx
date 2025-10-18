@@ -1838,6 +1838,7 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
               y={cursor.y}
               email={cursor.email}
               color={cursor.color}
+              scale={stageScale}
             />
           ))}
         </Layer>

@@ -34,6 +34,8 @@ export const processAICommand = onCall<
     cors: true,
     // Enforce authentication
     enforceAppCheck: false, // Set to true in production with App Check
+    // Bind secrets to this function
+    secrets: ["OPENAI_API_KEY"],
   },
   async (request) => {
     // Verify user is authenticated
