@@ -10,14 +10,16 @@ interface CircleProps {
   onClick: (id: string, shiftKey?: boolean) => void;
   onDblClick?: (id: string) => void;
   onDragStart?: (id: string) => void;
-  onDragEnd: (id: string, x: number, y: number) => void;
-  onDragMove?: (id: string, x: number, y: number) => void;
+  onDragEnd: (id: string, centerX: number, centerY: number) => void;
+  onDragMove?: (id: string, centerX: number, centerY: number) => void;
   onTransform?: (id: string, updates: Partial<CircleType>) => void;
   mode: CanvasMode;
   showTransformer?: boolean;
+  showSelectionIndicators?: boolean;
+  isMultiSelect?: boolean;
 }
 
-export const Circle = memo(function Circle({ circle, isSelected, isDraggable, onClick, onDblClick, onDragStart, onDragMove, onDragEnd, onTransform, mode, showTransformer = true }: CircleProps) {
+export const Circle = memo(function Circle({ circle, isSelected, isDraggable, onClick, onDblClick, onDragStart, onDragEnd, onDragMove, onTransform, mode, showTransformer = true, showSelectionIndicators = true, isMultiSelect = false }: CircleProps) {
   const circleRef = useRef<Konva.Circle>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   const [isHovered, setIsHovered] = useState(false);
@@ -132,9 +134,14 @@ export const Circle = memo(function Circle({ circle, isSelected, isDraggable, on
         radius={circle.radius}
         fill={circle.fill}
         rotation={circle.rotation || 0}
-        opacity={isSelected ? 0.7 : 1}
-        stroke={isSelected ? '#3B82F6' : undefined}
-        strokeWidth={isSelected ? 2 : 0}
+        opacity={isSelected ? 0.75 : 1}
+        shadowColor={!isMultiSelect && (isSelected || isHovered) ? 'black' : undefined}
+        shadowBlur={isMultiSelect ? 0 : isSelected ? 10 : isHovered ? 6 : 0}
+        shadowOpacity={isMultiSelect ? 0 : isSelected ? 0.3 : isHovered ? 0.2 : 0}
+        shadowOffsetX={isMultiSelect ? 0 : isHovered ? 2 : 0}
+        shadowOffsetY={isMultiSelect ? 0 : isHovered ? 2 : 0}
+        stroke={isSelected && showSelectionIndicators ? '#3B82F6' : undefined}
+        strokeWidth={isSelected && showSelectionIndicators ? 2 : 0}
         draggable={isDraggable !== undefined ? isDraggable : isSelected}
         onClick={handleClick}
         onTap={handleClick}
@@ -145,16 +152,13 @@ export const Circle = memo(function Circle({ circle, isSelected, isDraggable, on
         onDragEnd={handleDragEnd}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
-        shadowColor={isSelected || isHovered ? 'black' : undefined}
-        shadowBlur={isSelected ? 10 : isHovered ? 6 : 0}
-        shadowOpacity={isSelected ? 0.3 : isHovered ? 0.2 : 0}
-        shadowOffsetX={isHovered ? 2 : 0}
-        shadowOffsetY={isHovered ? 2 : 0}
+        perfectDrawEnabled={false}
+        drawHitFromCache={true}
       />
       {isSelected && (
         <Transformer
           ref={transformerRef}
-          borderEnabled={true}
+          borderEnabled={showTransformer}
           borderStroke="#3B82F6"
           borderStrokeWidth={2}
           anchorSize={8}

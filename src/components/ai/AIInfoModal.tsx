@@ -1,14 +1,43 @@
 import { X } from 'lucide-react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { EXAMPLE_COMMANDS } from '../../utils/aiExamples';
 
 interface AIInfoModalProps {
   isOpen: boolean;
   onClose: () => void;
   onExampleClick: (example: string) => void;
+  cursorX?: number;
+  cursorY?: number;
 }
 
-export const AIInfoModal = ({ isOpen, onClose, onExampleClick }: AIInfoModalProps) => {
+export const AIInfoModal = ({ isOpen, onClose, onExampleClick, cursorX = 0, cursorY = 0 }: AIInfoModalProps) => {
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+
+  // Update position when modal opens or cursor moves
+  useEffect(() => {
+    if (isOpen) {
+      const modalWidth = 600;
+      const modalHeight = 300; // Approximate height
+      const padding = 16;
+
+      // Position near cursor, but keep within viewport
+      let x = cursorX + padding;
+      let y = cursorY + padding;
+
+      // If modal would go off-screen to the right, position to the left of cursor
+      if (x + modalWidth > window.innerWidth) {
+        x = Math.max(padding, cursorX - modalWidth - padding);
+      }
+
+      // If modal would go off-screen at bottom, position above cursor
+      if (y + modalHeight > window.innerHeight) {
+        y = Math.max(padding, cursorY - modalHeight - padding);
+      }
+
+      setPosition({ x, y });
+    }
+  }, [isOpen, cursorX, cursorY]);
+
   // Handle Escape key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -39,7 +68,11 @@ export const AIInfoModal = ({ isOpen, onClose, onExampleClick }: AIInfoModalProp
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl w-[600px] max-h-[80vh] overflow-y-auto"
+        className="bg-white rounded-2xl shadow-2xl w-[600px] max-h-[80vh] overflow-y-auto fixed"
+        style={{
+          left: `${position.x}px`,
+          top: `${position.y}px`,
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

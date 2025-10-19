@@ -49,9 +49,9 @@ describe('Color Name Detection', () => {
 
   describe('formatColorForAI', () => {
     it('should format colors with names', () => {
-      expect(formatColorForAI('#3b82f6')).toBe('blue (#3b82f6)');
-      expect(formatColorForAI('#ef4444')).toBe('red (#ef4444)');
-      expect(formatColorForAI('#22c55e')).toBe('green (#22c55e)');
+      expect(formatColorForAI('#3b82f6')).toBe('#3b82f6');
+      expect(formatColorForAI('#ef4444')).toBe('#ef4444');
+      expect(formatColorForAI('#22c55e')).toBe('#22c55e');
     });
 
     it('should return just hex for unknown colors', () => {
@@ -59,8 +59,8 @@ describe('Color Name Detection', () => {
     });
 
     it('should handle various hex formats', () => {
-      expect(formatColorForAI('#F00')).toBe('red (#F00)');
-      expect(formatColorForAI('3b82f6')).toBe('blue (3b82f6)');
+      expect(formatColorForAI('#F00')).toBe('#F00');
+      expect(formatColorForAI('3b82f6')).toBe('#3b82f6');
     });
   });
 });

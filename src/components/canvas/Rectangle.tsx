@@ -15,9 +15,11 @@ interface RectangleProps {
   onTransform?: (id: string, updates: Partial<RectangleType>) => void;
   mode: CanvasMode;
   showTransformer?: boolean;
+  showSelectionIndicators?: boolean;
+  isMultiSelect?: boolean;
 }
 
-export const Rectangle = memo(function Rectangle({ rectangle, isSelected, isDraggable, onClick, onDblClick, onDragStart, onDragEnd, onDragMove, onTransform, mode, showTransformer = true }: RectangleProps) {
+export const Rectangle = memo(function Rectangle({ rectangle, isSelected, isDraggable, onClick, onDblClick, onDragStart, onDragEnd, onDragMove, onTransform, mode, showTransformer = true, showSelectionIndicators = true, isMultiSelect = false }: RectangleProps) {
   const rectRef = useRef<Konva.Rect>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   const [isHovered, setIsHovered] = useState(false);
@@ -163,9 +165,14 @@ export const Rectangle = memo(function Rectangle({ rectangle, isSelected, isDrag
         rotation={rectangle.rotation || 0}
         offsetX={rectangle.width / 2}
         offsetY={rectangle.height / 2}
-        opacity={isSelected ? 0.7 : 1}
-        stroke={isSelected ? '#3B82F6' : undefined}
-        strokeWidth={isSelected ? 2 : 0}
+        opacity={isSelected ? 0.75 : 1}
+        shadowColor={!isMultiSelect && (isSelected || isHovered) ? 'black' : undefined}
+        shadowBlur={isMultiSelect ? 0 : isSelected ? 10 : isHovered ? 6 : 0}
+        shadowOpacity={isMultiSelect ? 0 : isSelected ? 0.3 : isHovered ? 0.2 : 0}
+        shadowOffsetX={isMultiSelect ? 0 : isHovered ? 2 : 0}
+        shadowOffsetY={isMultiSelect ? 0 : isHovered ? 2 : 0}
+        stroke={isSelected && showSelectionIndicators ? '#3B82F6' : undefined}
+        strokeWidth={isSelected && showSelectionIndicators ? 2 : 0}
         draggable={isDraggable !== undefined ? isDraggable : isSelected}
         onClick={handleClick}
         onTap={handleClick}
@@ -176,16 +183,13 @@ export const Rectangle = memo(function Rectangle({ rectangle, isSelected, isDrag
         onDragEnd={handleDragEnd}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
-        shadowColor={isSelected || isHovered ? 'black' : undefined}
-        shadowBlur={isSelected ? 10 : isHovered ? 6 : 0}
-        shadowOpacity={isSelected ? 0.3 : isHovered ? 0.2 : 0}
-        shadowOffsetX={isHovered ? 2 : 0}
-        shadowOffsetY={isHovered ? 2 : 0}
+        perfectDrawEnabled={false}
+        drawHitFromCache={true}
       />
       {isSelected && (
         <Transformer
           ref={transformerRef}
-          borderEnabled={true}
+          borderEnabled={showTransformer}
           borderStroke="#3B82F6"
           borderStrokeWidth={2}
           anchorSize={8}

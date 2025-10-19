@@ -350,19 +350,19 @@ export const tools: ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "distributeShapes",
-      description: "Distributes shapes evenly",
+      description: "Distributes shapes evenly in a line (horizontal or vertical). Use for 'distribute evenly', 'space out', 'spread out' commands. Requires 3+ shapes.",
       parameters: {
         type: "object",
         properties: {
           shapeIds: {
             type: "array",
             items: {type: "string"},
-            description: "Array of shape IDs to distribute",
+            description: "Array of shape IDs to distribute (minimum 3 shapes)",
           },
           direction: {
             type: "string",
             enum: ["horizontal", "vertical"],
-            description: "Distribution direction",
+            description: "Distribution direction - 'horizontal' spreads left-to-right, 'vertical' spreads top-to-bottom",
           },
         },
         required: ["shapeIds", "direction"],
@@ -382,6 +382,36 @@ export const tools: ChatCompletionTool[] = [
         type: "object",
         properties: {},
         required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "modifyText",
+      description: "Modifies text properties (fontSize, text content, color) for text objects",
+      parameters: {
+        type: "object",
+        properties: {
+          shapeIds: {
+            type: "array",
+            items: {type: "string"},
+            description: "Array of text shape IDs to modify",
+          },
+          fontSize: {
+            type: "number",
+            description: "New font size in pixels (8-200). Only applies to text objects.",
+          },
+          text: {
+            type: "string",
+            description: "New text content. Only applies to text objects.",
+          },
+          color: {
+            type: "string",
+            description: "New text color (hex code or CSS name). Only applies to text objects.",
+          },
+        },
+        required: ["shapeIds"],
       },
     },
   },

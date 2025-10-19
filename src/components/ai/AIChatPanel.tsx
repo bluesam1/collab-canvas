@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { X, Send, HelpCircle, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, Send, HelpCircle, Loader2, ChevronLeft, ChevronRight, CheckCircle } from 'lucide-react';
 import { ALL_EXAMPLES } from '../../utils/aiExamples';
 
 interface AIChatPanelProps {
@@ -8,8 +8,12 @@ interface AIChatPanelProps {
   onSubmit: (command: string) => void;
   isLoading: boolean;
   error: string | null;
-  onOpenInfo: () => void;
+  onOpenInfo?: () => void;
   initialCommand?: string;
+  successMessage?: string | null;
+  onUndo?: () => void;
+  selectedShapeCount?: number;
+  onClearSelection?: () => void;
 }
 
 export const AIChatPanel = ({
@@ -20,6 +24,10 @@ export const AIChatPanel = ({
   error,
   onOpenInfo,
   initialCommand = '',
+  successMessage,
+  onUndo,
+  selectedShapeCount = 0,
+  onClearSelection,
 }: AIChatPanelProps) => {
   const [command, setCommand] = useState('');
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -27,6 +35,7 @@ export const AIChatPanel = ({
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [isHoveringExamples, setIsHoveringExamples] = useState(false);
   const [currentExampleIndex, setCurrentExampleIndex] = useState(0);
+  const [loadingMessage, setLoadingMessage] = useState('AI is thinking...');
   const panelRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -66,6 +75,29 @@ export const AIChatPanel = ({
       }, 100);
     }
   }, [isLoading, isOpen]);
+
+  // Progressive loading messages
+  useEffect(() => {
+    if (!isLoading) {
+      setLoadingMessage('AI is thinking...');
+      return;
+    }
+
+    // After 3 seconds: "We are still working on it..."
+    const timer1 = setTimeout(() => {
+      setLoadingMessage('We are still working on it...');
+    }, 3000);
+
+    // After 8 seconds total (3 + 5): "This is a tough one. AI is still thinking..."
+    const timer2 = setTimeout(() => {
+      setLoadingMessage('This is a tough one. AI is still thinking...');
+    }, 8000);
+
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+    };
+  }, [isLoading]);
 
   // Rollodex-style example rotation (pause on hover)
   useEffect(() => {
@@ -221,6 +253,18 @@ export const AIChatPanel = ({
 
       {/* Content */}
       <div className="flex-1 flex flex-col p-4 overflow-y-auto">
+        {/* Selected shapes hint */}
+        {selectedShapeCount > 0 && (
+          <p className="text-xs text-gray-600 mb-3 pb-2 border-b border-gray-200">
+            {selectedShapeCount} object{selectedShapeCount !== 1 ? 's' : ''} selected. AI uses this as a reference.{' '}
+            {onClearSelection && (
+              <span className="text-blue-600 hover:underline cursor-pointer" onClick={onClearSelection}>
+                (Deselect)
+              </span>
+            )}
+          </p>
+        )}
+
         {/* Input Form */}
         <form onSubmit={handleSubmit} className="space-y-2">
           <textarea
@@ -228,7 +272,7 @@ export const AIChatPanel = ({
             value={command}
             onChange={(e) => setCommand(e.target.value)}
             onKeyDown={handleTextareaKeyDown}
-            placeholder="Describe what you want to create..."
+            placeholder="Describe what you want to do..."
             className="w-full h-20 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-sm"
             disabled={isLoading}
           />
@@ -236,24 +280,19 @@ export const AIChatPanel = ({
             <p className="text-xs text-gray-500">
               <kbd className="px-1.5 py-0.5 bg-gray-100 border border-gray-300 rounded text-xs">Enter</kbd> to send • <kbd className="px-1.5 py-0.5 bg-gray-100 border border-gray-300 rounded text-xs">Shift+Enter</kbd> for new line
             </p>
-          </div>
-          <button
-            type="submit"
-            disabled={!command.trim() || isLoading}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-          >
-            {isLoading ? (
-              <>
+            <button
+              type="submit"
+              disabled={!command.trim() || isLoading}
+              className="p-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+              title={isLoading ? "Processing..." : "Send (Enter)"}
+            >
+              {isLoading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Processing...</span>
-              </>
-            ) : (
-              <>
+              ) : (
                 <Send className="w-4 h-4" />
-                <span>Send</span>
-              </>
-            )}
-          </button>
+              )}
+            </button>
+          </div>
         </form>
 
         {/* Example Prompts Rollodex */}
@@ -300,7 +339,7 @@ export const AIChatPanel = ({
         {isLoading && (
           <div className="mt-4 flex items-center gap-2 text-gray-600 text-sm">
             <Loader2 className="w-4 h-4 animate-spin" />
-            <span>AI is thinking...</span>
+            <span>{loadingMessage}</span>
           </div>
         )}
 
@@ -312,6 +351,26 @@ export const AIChatPanel = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <span className="text-sm text-red-800">{error}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Success Display with Undo */}
+        {successMessage && !isLoading && (
+          <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-start gap-2">
+                <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                <span className="text-sm text-green-800">{successMessage}</span>
+              </div>
+              {onUndo && (
+                <button
+                  onClick={onUndo}
+                  className="flex-shrink-0 px-2 py-1 text-xs font-medium text-green-700 bg-white border border-green-300 rounded hover:bg-green-50 transition-colors whitespace-nowrap"
+                >
+                  Undo
+                </button>
+              )}
             </div>
           </div>
         )}

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Square, Circle, Type, Trash2, Droplet, Slash, Info, ArrowLeft, Hand, Terminal, BoxSelect, Maximize2, Undo, Zap, ZoomIn, ZoomOut } from 'lucide-react';
+import { Square, Circle, Type, Trash2, Droplet, Slash, Info, Hand, Terminal, BoxSelect, Maximize2, Undo, ZoomIn, ZoomOut, Redo } from 'lucide-react';
 import { useCanvas } from '../../hooks/useCanvas';
 import { isLine } from '../../types';
 import { useContext } from 'react';
@@ -22,8 +22,8 @@ interface ToolbarProps {
   onZoomReset: () => void;
 }
 
-export function Toolbar({ selectedColor, onColorChange, lineThickness, onLineThicknessChange, showInfo, onToggleInfo, onBackToCanvasList, onFrameSelected, onDeleteSelected, currentZoom, onZoomIn, onZoomOut, onZoomReset }: ToolbarProps) {
-  const { mode, setMode, selectedIds, deleteSelected, updateObject, objects, createObject, clearSelection, undo, undoState, performanceMode, setPerformanceMode } = useCanvas();
+export function Toolbar({ selectedColor, onColorChange, lineThickness, onLineThicknessChange, showInfo, onToggleInfo, onBackToCanvasList: _onBackToCanvasList, onFrameSelected, onDeleteSelected, currentZoom, onZoomIn, onZoomOut, onZoomReset }: ToolbarProps) {
+  const { mode, setMode, selectedIds, deleteSelected, updateObject, objects, createObject, clearSelection, undo, undoState, redo, redoState } = useCanvas();
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showStrokeWidthMenu, setShowStrokeWidthMenu] = useState(false);
   const [showZoomMenu, setShowZoomMenu] = useState(false);
@@ -194,22 +194,7 @@ export function Toolbar({ selectedColor, onColorChange, lineThickness, onLineThi
   };
 
   return (
-    <div className="fixed top-0 left-0 bottom-0 z-20 w-16 bg-gray-800 shadow-lg flex flex-col items-center gap-2" style={{ paddingTop: '8px' }}>
-      {/* Back to Canvas List Button */}
-      <button
-        onClick={onBackToCanvasList}
-        className="w-12 h-12 rounded-lg flex items-center justify-center transition-all group relative text-gray-400 hover:text-white hover:bg-gray-700"
-        title="Back to Canvas List"
-      >
-        <ArrowLeft size={20} />
-        <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity z-30">
-          Back to Canvas List
-        </span>
-      </button>
-
-      {/* Divider */}
-      <div className="w-10 h-px bg-gray-700 my-1" />
-
+    <div className="fixed top-16 left-0 bottom-0 z-20 w-16 bg-gray-800 shadow-lg flex flex-col items-center gap-2" style={{ paddingTop: '8px' }}>
       {/* View Controls Group */}
       <div className="flex flex-col gap-1">
         {/* Pan Mode */}
@@ -220,11 +205,11 @@ export function Toolbar({ selectedColor, onColorChange, lineThickness, onLineThi
               ? 'bg-blue-600 text-white'
               : 'text-gray-400 hover:text-white hover:bg-gray-700'
           }`}
-          title="Pan (V)"
+          title="Pan (V) - Hold Space to temporarily pan"
         >
           <Hand size={20} />
           <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity z-30">
-            Pan (V)
+            Pan (V) - Hold Space to pan
           </span>
         </button>
 
@@ -524,6 +509,23 @@ export function Toolbar({ selectedColor, onColorChange, lineThickness, onLineThi
         </span>
       </button>
 
+      {/* Redo Button */}
+      <button
+        onClick={redo}
+        disabled={!redoState}
+        className={`w-12 h-12 rounded-lg flex items-center justify-center transition-colors group relative ${
+          redoState
+            ? 'text-gray-400 hover:text-white hover:bg-gray-700'
+            : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+        }`}
+        title={redoState ? `Redo ${redoState.operation} (Ctrl/Cmd+Y)` : 'Nothing to redo'}
+      >
+        <Redo size={20} />
+        <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity z-30">
+          {redoState ? `Redo ${redoState.operation.charAt(0).toUpperCase() + redoState.operation.slice(1)}` : 'Nothing to redo'}
+        </span>
+      </button>
+
       {/* Spacer to push bottom buttons */}
       <div className="flex-1" />
 
@@ -579,16 +581,10 @@ export function Toolbar({ selectedColor, onColorChange, lineThickness, onLineThi
                 <Terminal size={14} className="text-green-400" />
                 Create 100
               </button>
-              <button
-                onClick={() => setPerformanceMode(!performanceMode)}
-                className="w-full text-left px-3 py-2 text-sm text-white hover:bg-gray-700 transition-colors flex items-center gap-2 font-mono"
-              >
-                <Zap size={14} className={performanceMode ? "text-yellow-400" : "text-gray-400"} />
-                Performance: {performanceMode ? 'ON' : 'OFF'}
-              </button>
             </div>
           </>
         )}
+
       </div>
     </div>
   );

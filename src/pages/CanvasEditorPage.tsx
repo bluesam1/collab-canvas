@@ -7,7 +7,7 @@ import { OnlineUsers } from '../components/presence/OnlineUsers';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { AIAssistantButton } from '../components/ai/AIAssistantButton';
 import { AIChatPanel } from '../components/ai/AIChatPanel';
-import { AIInfoModal } from '../components/ai/AIInfoModal';
+import { Logo } from '../components/common/Logo';
 import { getCanvas, updateLastOpened, renameCanvas } from '../utils/canvases';
 import { useToast } from '../hooks/useToast';
 import { useCanvasList } from '../hooks/useCanvasList';
@@ -39,10 +39,11 @@ export function CanvasEditorPage() {
   const [isOwner, setIsOwner] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [showAIPanel, setShowAIPanel] = useState(false);
-  const [showAIInfoModal, setShowAIInfoModal] = useState(false);
   const [aiCommand, setAiCommand] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [aiSuccessMessage, setAiSuccessMessage] = useState<string | null>(null);
+  const [showAiUndo, setShowAiUndo] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const frameShapesFuncRef = useRef<((shapes: any[]) => void) | null>(null);
   const deleteWithEffectFuncRef = useRef<(() => void) | null>(null);
@@ -66,6 +67,33 @@ export function CanvasEditorPage() {
     localStorage.setItem('collab-canvas-line-thickness', thickness.toString());
   };
 
+  // Auto-dismiss AI success message after 10 seconds
+  useEffect(() => {
+    if (aiSuccessMessage) {
+      const timer = setTimeout(() => {
+        setAiSuccessMessage(null);
+        setShowAiUndo(false); // Also hide undo button when message is dismissed
+      }, 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [aiSuccessMessage]);
+
+  // Listen for floating AI button event to open AI panel with selected shapes context
+  useEffect(() => {
+    const handleOpenAIAssistant = (e: any) => {
+      const selectedShapeIds = e.detail?.selectedShapeIds || [];
+      // Open the AI panel
+      setShowAIPanel(true);
+      // Add context about selected shapes to the command
+      if (selectedShapeIds.length > 0) {
+        setAiCommand('');
+      }
+    };
+
+    window.addEventListener('openAIAssistant', handleOpenAIAssistant as EventListener);
+    return () => window.removeEventListener('openAIAssistant', handleOpenAIAssistant as EventListener);
+  }, []);
+
   // Calculate viewport center in world coordinates
   const getViewportCenter = () => {
     // Get viewport center in screen coordinates
@@ -79,11 +107,23 @@ export function CanvasEditorPage() {
     const worldCenterX = (screenCenterX - viewportTransform.x) / scale;
     const worldCenterY = (screenCenterY - viewportTransform.y) / scale;
     
-    // Clamp to canvas bounds (5000x5000)
-    const clampedX = Math.max(0, Math.min(5000, worldCenterX));
-    const clampedY = Math.max(0, Math.min(5000, worldCenterY));
+    // Clamp to canvas bounds (5000x5000) - allow negative coordinates for proper viewport center
+    const clampedX = Math.max(-1000, Math.min(6000, worldCenterX)); // Allow some negative space
+    const clampedY = Math.max(-1000, Math.min(6000, worldCenterY)); // Allow some negative space
+    
     
     return { x: clampedX, y: clampedY };
+  };
+
+  // Calculate viewport bounds (visible area of canvas)
+  const getViewportBounds = () => {
+    const scale = viewportTransform.scale || 1;
+    const x = -viewportTransform.x / scale;
+    const y = -viewportTransform.y / scale;
+    const width = window.innerWidth / scale;
+    const height = window.innerHeight / scale;
+    
+    return { x, y, width, height };
   };
 
   // Handle viewport changes (memoized to prevent infinite re-renders)
@@ -281,6 +321,7 @@ export function CanvasEditorPage() {
 
     setAiLoading(true);
     setAiError(null);
+    setAiSuccessMessage(null); // Clear previous messages
 
     try {
       // Get canvas state for AI context
@@ -347,6 +388,7 @@ export function CanvasEditorPage() {
           selectedShapeIds: canvasContext.selectedIds,
           currentColor: selectedColor,
           currentStrokeWidth: lineThickness,
+          viewportBounds: getViewportBounds(), // Pass viewport bounds
         });
 
       if (response.success && response.toolCalls && response.toolCalls.length > 0) {
@@ -404,14 +446,10 @@ export function CanvasEditorPage() {
                   canvasContext.deleteObject(shapeIdsToDelete);
                 }
 
-                // Show success toast with undo button
+                // Show success message with undo button
                 const count = shapeIdsToDelete.length;
-                showSuccess(
-                  `Done! ${count} shape${count !== 1 ? 's' : ''} deleted.`,
-                  5000, // 5 seconds
-                  'Undo',
-                  handleAIUndo
-                );
+                setAiSuccessMessage(`Done! ${count} shape${count !== 1 ? 's' : ''} deleted.`);
+                setShowAiUndo(true); // Show undo button since shapes were deleted
                 setAiCommand('');
                 return; // Exit early since we handled delete
               }
@@ -428,7 +466,7 @@ export function CanvasEditorPage() {
           // For modify, we need to capture the current state of shapes that will be modified
           // Get all affected shape IDs from tool calls
           const modifyToolCalls = response.toolCalls.filter(tc =>
-            ['moveShapes', 'resizeShapes', 'rotateShapes', 'changeColor', 'arrangeInGrid', 'alignShapes', 'distributeShapes'].includes(tc.function.name)
+            ['moveShapes', 'resizeShapes', 'rotateShapes', 'changeColor', 'modifyText', 'arrangeInGrid', 'alignShapes', 'distributeShapes'].includes(tc.function.name)
           );
           const affectedIdsBeforeModify: string[] = [];
           for (const tc of modifyToolCalls) {
@@ -451,6 +489,9 @@ export function CanvasEditorPage() {
         // Disable auto-capture during AI operations
         canvasContext.setDisableUndoCapture(true);
 
+        // Capture undo state BEFORE operation to detect if it changes
+        const undoStateBeforeOperation = canvasContext.undoState;
+
         // Execute tool calls
         const affectedShapeIds = await executeToolCalls(
           response.toolCalls,
@@ -464,8 +505,14 @@ export function CanvasEditorPage() {
         console.log('🎯 AI created/modified shape IDs:', affectedShapeIds);
 
         // Check if any shapes were actually affected
-        if (affectedShapeIds.length === 0) {
-          setAiError('Command processed, but no shapes were created or modified.');
+        // Note: For deletions, affectedShapeIds will be empty, but undoState will be created
+        const undoStateAfterOperation = canvasContext.undoState;
+        const undoStateChanged = undoStateAfterOperation !== undoStateBeforeOperation;
+        
+        if (affectedShapeIds.length === 0 && !undoStateChanged) {
+          // No changes were made at all
+          setAiSuccessMessage('Command processed, but no shapes were created or modified.');
+          setShowAiUndo(false);
           return;
         }
 
@@ -479,40 +526,45 @@ export function CanvasEditorPage() {
         }
 
         // For create/modify operations, wait for shapes to appear and then select them
-        setWaitingForShapeIds(affectedShapeIds);
+        if (affectedShapeIds.length > 0) {
+          setWaitingForShapeIds(affectedShapeIds);
+        }
 
         // Show success toast with undo button
-        const count = affectedShapeIds.length;
-        showSuccess(
-          `Done! ${count} shape${count !== 1 ? 's' : ''} created/modified.`,
-          5000, // 5 seconds
-          'Undo',
-          handleAIUndo
-        );
+        if (affectedShapeIds.length > 0) {
+          const count = affectedShapeIds.length;
+          setAiSuccessMessage(`Done! ${count} shape${count !== 1 ? 's' : ''} created/modified.`);
+        } else {
+          // Likely a deletion or other operation that doesn't return affected IDs
+          setAiSuccessMessage('Done!');
+        }
+        setAiError(null); // Clear error message when showing success
+        setShowAiUndo(true); // Show undo button since shapes were modified (or deleted)
         setAiCommand('');
       } else if (response.success && (!response.toolCalls || response.toolCalls.length === 0)) {
-        // AI responded but didn't generate any tool calls
-        setAiError("I didn't understand how to process that command. Try being more specific or use the info button (?) to see examples.");
+        // AI responded but didn't generate any tool calls - this is informational, not an error
+        setAiSuccessMessage("The prompt didn't result in any changes. Try being more specific or refer to the examples below for guidance.");
+        setAiError(null); // Clear error message when showing info
+        setShowAiUndo(false); // No undo button since no shapes were modified
       } else {
         // Other error
         setAiError(response.error || 'Failed to process command');
+        setAiSuccessMessage(null); // Clear success message when showing error
       }
     } catch (error: any) {
       console.error('AI command error:', error);
       setAiError(error.message || 'Something went wrong. Please try again.');
+      setAiSuccessMessage(null); // Clear success message when showing error
     } finally {
       setAiLoading(false);
     }
   };
 
-  const handleAIExampleClick = (example: string) => {
-    setAiCommand(example);
-    setShowAIPanel(true);
-  };
-
   const handleAIUndo = useCallback(() => {
     if (canvasContext) {
       canvasContext.undo();
+      setAiSuccessMessage(null); // Clear success message after undo
+      setShowAiUndo(false); // Hide undo button after undo
     }
   }, [canvasContext]);
 
@@ -532,8 +584,11 @@ export function CanvasEditorPage() {
     <div className="relative w-full h-screen overflow-hidden">
       {/* Top Navigation Bar */}
       <header className="fixed top-0 left-0 right-0 bg-gray-800 text-white shadow-lg z-10">
-        <div className="px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center">
+        <div className="pl-0 pr-4 sm:pr-6 lg:pr-8 py-3 flex justify-between items-center">
           <div className="flex items-center gap-4">
+            <div className="w-16 flex justify-center">
+              <Logo size={45} className="flex-shrink-0" />
+            </div>
             <button
               onClick={handleBackToCanvasList}
               className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
@@ -623,16 +678,16 @@ export function CanvasEditorPage() {
         onSubmit={handleAISubmit}
         isLoading={aiLoading}
         error={aiError}
-        onOpenInfo={() => setShowAIInfoModal(true)}
+        onOpenInfo={() => {}} // Removed as per edit hint
         initialCommand={aiCommand}
+        successMessage={aiSuccessMessage}
+        onUndo={showAiUndo && canvasContext.undoState ? handleAIUndo : undefined}
+        selectedShapeCount={canvasContext.selectedIds.length}
+        onClearSelection={() => canvasContext.clearSelection()}
       />
 
       {/* AI Info Modal */}
-      <AIInfoModal
-        isOpen={showAIInfoModal}
-        onClose={() => setShowAIInfoModal(false)}
-        onExampleClick={handleAIExampleClick}
-      />
+      {/* Removed as per edit hint */}
     </div>
   );
 }

@@ -82,6 +82,13 @@ export interface DistributeShapesParams {
   direction: 'horizontal' | 'vertical';
 }
 
+export interface ModifyTextParams {
+  shapeIds: string[];
+  fontSize?: number;
+  text?: string;
+  color?: string;
+}
+
 export interface SelectShapesParams {
   shapeIds: string[];
 }
@@ -121,6 +128,7 @@ export interface ProcessAICommandRequest {
   canvasId: string;
   canvasState: CanvasShape[];
   viewportCenter: { x: number; y: number };
+  viewportBounds?: { x: number; y: number; width: number; height: number }; // Visible canvas area
   selectedShapeIds?: string[];
   currentColor?: string; // Current selected color in UI
   currentStrokeWidth?: number; // Current stroke width in UI

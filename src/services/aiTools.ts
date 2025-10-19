@@ -4,7 +4,8 @@
  */
 
 import type { ToolCall } from '../types/ai';
-import type { CanvasContextType } from '../types';
+import type { CanvasContextType, Shape } from '../types';
+import { MAX_CANVAS_OBJECTS, CANVAS_LIMITS } from '../constants/canvas';
 import { isRectangle, isCircle, isLine } from '../types';
 
 /**
@@ -30,11 +31,16 @@ export const executeToolCalls = async (
       affectedShapeIds.push(...shapeIds);
     } catch (error) {
       console.error('Error executing tool call:', toolCall.function.name, error);
-      // Continue with other tool calls even if one fails
+      // Re-throw canvas limit errors so they can be shown to the user
+      if (error instanceof Error && error.message.includes('Canvas limit')) {
+        throw error;
+      }
+      // Continue with other tool calls for non-limit errors
     }
   }
 
-  return affectedShapeIds;
+  // Remove duplicates and return unique affected shape IDs
+  return [...new Set(affectedShapeIds)];
 };
 
 /**
@@ -54,15 +60,32 @@ async function executeToolCall(
       const count = args.count || 1;
       const spacing = args.spacing || 20;
 
+      // Check canvas object limit
+      if (objects.length >= MAX_CANVAS_OBJECTS) {
+        throw new Error(CANVAS_LIMITS.MAX_OBJECTS_REACHED);
+      }
+
+      // Check if batch creation would exceed limit
+      if (objects.length + count > MAX_CANVAS_OBJECTS) {
+        const maxAllowed = MAX_CANVAS_OBJECTS - objects.length;
+        throw new Error(`Cannot create ${count} rectangle${count !== 1 ? 's' : ''}. Only ${maxAllowed} slot${maxAllowed !== 1 ? 's' : ''} remaining. Canvas limit: ${MAX_CANVAS_OBJECTS} objects. Please delete some objects before creating more.`);
+      }
+
+      // Validate coordinates and dimensions to prevent NaN values
+      const x = typeof args.x === 'number' && !isNaN(args.x) ? args.x : 0;
+      const y = typeof args.y === 'number' && !isNaN(args.y) ? args.y : 0;
+      const width = typeof args.width === 'number' && !isNaN(args.width) && args.width > 0 ? args.width : 100;
+      const height = typeof args.height === 'number' && !isNaN(args.height) && args.height > 0 ? args.height : 100;
+
       if (count === 1) {
         // Single shape - create at exact position
         const id = await createObject({
           type: 'rectangle',
-          x: args.x,
-          y: args.y,
-          width: args.width,
-          height: args.height,
-          fill: args.color,
+          x: x,
+          y: y,
+          width: width,
+          height: height,
+          fill: args.color || '#3B82F6',
           rotation: 0,
           createdBy: userId,
         });
@@ -72,14 +95,14 @@ async function executeToolCall(
       // Multiple shapes - arrange in grid
       const cols = Math.ceil(Math.sqrt(count));
       const rows = Math.ceil(count / cols);
-      const cellWidth = args.width + spacing;
-      const cellHeight = args.height + spacing;
+      const cellWidth = width + spacing;
+      const cellHeight = height + spacing;
       
       // Center the grid around the specified position
       const gridWidth = cols * cellWidth - spacing;
       const gridHeight = rows * cellHeight - spacing;
-      const startX = args.x - gridWidth / 2;
-      const startY = args.y - gridHeight / 2;
+      const startX = x - gridWidth / 2;
+      const startY = y - gridHeight / 2;
 
       // Use colors array if provided, otherwise use single color
       const colors = args.colors || [args.color];
@@ -91,14 +114,18 @@ async function executeToolCall(
         const col = i % cols;
         const x = startX + col * cellWidth;
         const y = startY + row * cellHeight;
-        const color = colors[i % colors.length]; // Cycle through colors
+        
+        // For random colors, pick randomly from the colors array
+        const color = colors.length > 1 
+          ? colors[Math.floor(Math.random() * colors.length)]
+          : colors[0];
 
         shapesData.push({
           type: 'rectangle' as const,
           x,
           y,
-          width: args.width,
-          height: args.height,
+          width: width,
+          height: height,
           fill: color,
           rotation: 0,
           createdBy: userId,
@@ -113,14 +140,30 @@ async function executeToolCall(
       const count = args.count || 1;
       const spacing = args.spacing || 20;
 
+      // Check canvas object limit
+      if (objects.length >= MAX_CANVAS_OBJECTS) {
+        throw new Error(CANVAS_LIMITS.MAX_OBJECTS_REACHED);
+      }
+
+      // Check if batch creation would exceed limit
+      if (objects.length + count > MAX_CANVAS_OBJECTS) {
+        const maxAllowed = MAX_CANVAS_OBJECTS - objects.length;
+        throw new Error(`Cannot create ${count} circle${count !== 1 ? 's' : ''}. Only ${maxAllowed} slot${maxAllowed !== 1 ? 's' : ''} remaining. Canvas limit: ${MAX_CANVAS_OBJECTS} objects. Please delete some objects before creating more.`);
+      }
+
+      // Validate coordinates to prevent NaN values
+      const x = typeof args.x === 'number' && !isNaN(args.x) ? args.x : 0;
+      const y = typeof args.y === 'number' && !isNaN(args.y) ? args.y : 0;
+      const radius = typeof args.radius === 'number' && !isNaN(args.radius) && args.radius > 0 ? args.radius : 50;
+
       if (count === 1) {
         // Single shape - create at exact position
         const id = await createObject({
           type: 'circle',
-          centerX: args.x,
-          centerY: args.y,
-          radius: args.radius,
-          fill: args.color,
+          centerX: x,
+          centerY: y,
+          radius: radius,
+          fill: args.color || '#3B82F6',
           rotation: 0,
           createdBy: userId,
         });
@@ -130,14 +173,14 @@ async function executeToolCall(
       // Multiple shapes - arrange in grid
       const cols = Math.ceil(Math.sqrt(count));
       const rows = Math.ceil(count / cols);
-      const cellWidth = args.radius * 2 + spacing;
-      const cellHeight = args.radius * 2 + spacing;
+      const cellWidth = radius * 2 + spacing;
+      const cellHeight = radius * 2 + spacing;
       
       // Center the grid around the specified position
       const gridWidth = cols * cellWidth - spacing;
       const gridHeight = rows * cellHeight - spacing;
-      const startX = args.x - gridWidth / 2 + args.radius;
-      const startY = args.y - gridHeight / 2 + args.radius;
+      const startX = x - gridWidth / 2 + radius;
+      const startY = y - gridHeight / 2 + radius;
 
       // Use colors array if provided, otherwise use single color
       const colors = args.colors || [args.color];
@@ -149,13 +192,17 @@ async function executeToolCall(
         const col = i % cols;
         const centerX = startX + col * cellWidth;
         const centerY = startY + row * cellHeight;
-        const color = colors[i % colors.length]; // Cycle through colors
+        
+        // For random colors, pick randomly from the colors array
+        const color = colors.length > 1 
+          ? colors[Math.floor(Math.random() * colors.length)]
+          : colors[0];
 
         shapesData.push({
           type: 'circle' as const,
           centerX,
           centerY,
-          radius: args.radius,
+          radius: radius,
           fill: color,
           rotation: 0,
           createdBy: userId,
@@ -167,20 +214,32 @@ async function executeToolCall(
     }
 
     case 'createLine': {
+      // Check canvas object limit
+      if (objects.length >= MAX_CANVAS_OBJECTS) {
+        throw new Error(CANVAS_LIMITS.MAX_OBJECTS_REACHED);
+      }
+
+      // Validate coordinates to prevent NaN values
+      const x1 = typeof args.x1 === 'number' && !isNaN(args.x1) ? args.x1 : 0;
+      const y1 = typeof args.y1 === 'number' && !isNaN(args.y1) ? args.y1 : 0;
+      const x2 = typeof args.x2 === 'number' && !isNaN(args.x2) ? args.x2 : 100;
+      const y2 = typeof args.y2 === 'number' && !isNaN(args.y2) ? args.y2 : 0;
+      const strokeWidth = typeof args.strokeWidth === 'number' && !isNaN(args.strokeWidth) && args.strokeWidth > 0 ? args.strokeWidth : 2;
+
       // Convert x1,y1,x2,y2 to x,y,width,rotation format
-      const dx = args.x2 - args.x1;
-      const dy = args.y2 - args.y1;
+      const dx = x2 - x1;
+      const dy = y2 - y1;
       const length = Math.sqrt(dx * dx + dy * dy);
       const angle = Math.atan2(dy, dx) * (180 / Math.PI);
 
       const id = await createObject({
         type: 'line',
-        x: args.x1,
-        y: args.y1,
+        x: x1,
+        y: y1,
         width: length,
         height: 0,
-        stroke: args.color,
-        strokeWidth: args.strokeWidth,
+        stroke: args.color || '#3B82F6',
+        strokeWidth: strokeWidth,
         rotation: angle,
         createdBy: userId,
       });
@@ -188,13 +247,24 @@ async function executeToolCall(
     }
 
     case 'createText': {
+      // Check canvas object limit
+      if (objects.length >= MAX_CANVAS_OBJECTS) {
+        throw new Error(CANVAS_LIMITS.MAX_OBJECTS_REACHED);
+      }
+
+      // Validate coordinates and text properties to prevent NaN values
+      const x = typeof args.x === 'number' && !isNaN(args.x) ? args.x : 0;
+      const y = typeof args.y === 'number' && !isNaN(args.y) ? args.y : 0;
+      const fontSize = typeof args.fontSize === 'number' && !isNaN(args.fontSize) && args.fontSize > 0 ? args.fontSize : 16;
+      const text = typeof args.text === 'string' && args.text.trim() ? args.text.trim() : 'Text';
+
       const id = await createObject({
         type: 'text',
-        x: args.x,
-        y: args.y,
-        text: args.text,
-        fontSize: args.fontSize,
-        fill: args.color,
+        x: x,
+        y: y,
+        text: text,
+        fontSize: fontSize,
+        fill: args.color || '#3B82F6',
         rotation: 0,
         createdBy: userId,
       });
@@ -204,19 +274,21 @@ async function executeToolCall(
     // ===== MANIPULATION TOOLS =====
     case 'moveShapes': {
       const shapeIds = args.shapeIds as string[];
+      const updatesMap = new Map<string, Partial<Shape>>();
+      
       for (const id of shapeIds) {
         const shape = objects.find((obj) => obj.id === id);
         if (shape) {
           if (args.relative) {
             // Relative movement
             if (isCircle(shape)) {
-              await updateObject(id, {
+              updatesMap.set(id, {
                 centerX: shape.centerX + args.x,
                 centerY: shape.centerY + args.y,
               });
             } else {
               // Rectangle, Line, Text all use x/y
-              await updateObject(id, {
+              updatesMap.set(id, {
                 x: shape.x + args.x,
                 y: shape.y + args.y,
               });
@@ -224,12 +296,12 @@ async function executeToolCall(
           } else {
             // Absolute movement
             if (isCircle(shape)) {
-              await updateObject(id, {
+              updatesMap.set(id, {
                 centerX: args.x,
                 centerY: args.y,
               });
             } else {
-              await updateObject(id, {
+              updatesMap.set(id, {
                 x: args.x,
                 y: args.y,
               });
@@ -237,58 +309,118 @@ async function executeToolCall(
           }
         }
       }
+      
+      if (updatesMap.size > 0) {
+        await canvasContext.updateObjectsBatch(updatesMap);
+      }
       return shapeIds;
     }
 
     case 'resizeShapes': {
       const shapeIds = args.shapeIds as string[];
+      const updatesMap = new Map<string, Partial<Shape>>();
+      
       for (const id of shapeIds) {
         const shape = objects.find((obj) => obj.id === id);
         if (shape) {
           if (isRectangle(shape)) {
-            await updateObject(id, {
+            updatesMap.set(id, {
               width: shape.width * args.scaleFactor,
               height: shape.height * args.scaleFactor,
             });
           } else if (isCircle(shape)) {
-            await updateObject(id, {
+            updatesMap.set(id, {
               radius: shape.radius * args.scaleFactor,
             });
           } else if (isLine(shape)) {
-            await updateObject(id, {
+            updatesMap.set(id, {
               width: shape.width * args.scaleFactor,
             });
           }
         }
+      }
+      
+      if (updatesMap.size > 0) {
+        await canvasContext.updateObjectsBatch(updatesMap);
       }
       return shapeIds;
     }
 
     case 'rotateShapes': {
       const shapeIds = args.shapeIds as string[];
+      const updatesMap = new Map<string, Partial<Shape>>();
+      
       for (const id of shapeIds) {
         const shape = objects.find((obj) => obj.id === id);
         if (shape) {
           // All shapes support rotation
-          await updateObject(id, {
+          updatesMap.set(id, {
             rotation: args.degrees,
           });
         }
+      }
+      
+      if (updatesMap.size > 0) {
+        await canvasContext.updateObjectsBatch(updatesMap);
       }
       return shapeIds;
     }
 
     case 'changeColor': {
       const shapeIds = args.shapeIds as string[];
+      const updatesMap = new Map<string, Partial<Shape>>();
+      
       for (const id of shapeIds) {
         const shape = objects.find((obj) => obj.id === id);
         if (shape) {
           if (isLine(shape)) {
-            await updateObject(id, { stroke: args.color });
+            updatesMap.set(id, { stroke: args.color });
           } else {
-            await updateObject(id, { fill: args.color });
+            updatesMap.set(id, { fill: args.color });
           }
         }
+      }
+      
+      if (updatesMap.size > 0) {
+        await canvasContext.updateObjectsBatch(updatesMap);
+      }
+      return shapeIds;
+    }
+
+    case 'modifyText': {
+      const shapeIds = args.shapeIds as string[];
+      const updatesMap = new Map<string, Partial<Shape>>();
+      
+      for (const id of shapeIds) {
+        const shape = objects.find((obj) => obj.id === id);
+        
+        if (shape && shape.type === 'text') {
+          const updateData: any = {};
+          
+          // Update fontSize if provided
+          if (args.fontSize !== undefined) {
+            updateData.fontSize = args.fontSize;
+          }
+          
+          // Update text content if provided
+          if (args.text !== undefined) {
+            updateData.text = args.text;
+          }
+          
+          // Update color if provided
+          if (args.color !== undefined) {
+            updateData.fill = args.color;
+          }
+          
+          // Only add to batch if there are changes
+          if (Object.keys(updateData).length > 0) {
+            updatesMap.set(id, updateData);
+          }
+        }
+      }
+      
+      if (updatesMap.size > 0) {
+        await canvasContext.updateObjectsBatch(updatesMap);
       }
       return shapeIds;
     }
@@ -397,49 +529,78 @@ async function executeToolCall(
       const shapeIds = args.shapeIds as string[];
       const shapes = objects.filter((obj) => shapeIds.includes(obj.id));
       
-      if (shapes.length < 3) return shapeIds; // Need at least 3 shapes to distribute
+      if (shapes.length < 3) {
+        return shapeIds; // Need at least 3 shapes to distribute
+      }
 
       const direction = args.direction as string;
       
       if (direction === 'horizontal') {
         shapes.sort((a, b) => {
-          const aX = isCircle(a) ? a.centerX : (isRectangle(a) || isLine(a) ? a.x : a.x);
-          const bX = isCircle(b) ? b.centerX : (isRectangle(b) || isLine(b) ? b.x : b.x);
+          const aX = isCircle(a) ? a.centerX : (a as any).x;
+          const bX = isCircle(b) ? b.centerX : (b as any).x;
           return aX - bX;
         });
         const firstShape = shapes[0];
         const lastShape = shapes[shapes.length - 1];
-        const minX = isCircle(firstShape) ? firstShape.centerX : (isRectangle(firstShape) || isLine(firstShape) ? firstShape.x : firstShape.x);
-        const maxX = isCircle(lastShape) ? lastShape.centerX : (isRectangle(lastShape) || isLine(lastShape) ? lastShape.x : lastShape.x);
+        const minX = isCircle(firstShape) ? firstShape.centerX : (firstShape as any).x;
+        const maxX = isCircle(lastShape) ? lastShape.centerX : (lastShape as any).x;
         const spacing = (maxX - minX) / (shapes.length - 1);
         
+        let hasChanges = false;
         for (let i = 0; i < shapes.length; i++) {
+          const shape = shapes[i];
+          const currentX = isCircle(shape) ? shape.centerX : (shape as any).x;
           const newX = minX + i * spacing;
-          if (isCircle(shapes[i])) {
-            await updateObject(shapes[i].id, { centerX: newX });
-          } else {
-            await updateObject(shapes[i].id, { x: newX });
+          
+          // Only update if position actually changes
+          if (Math.abs(currentX - newX) > 0.1) {
+            if (isCircle(shape)) {
+              await updateObject(shape.id, { centerX: newX });
+            } else {
+              await updateObject(shape.id, { x: newX });
+            }
+            hasChanges = true;
           }
+        }
+        
+        if (!hasChanges) {
+          // All shapes already evenly distributed - no changes needed
         }
       } else if (direction === 'vertical') {
         shapes.sort((a, b) => {
-          const aY = isCircle(a) ? a.centerY : (isRectangle(a) || isLine(a) ? a.y : a.y);
-          const bY = isCircle(b) ? b.centerY : (isRectangle(b) || isLine(b) ? b.y : b.y);
+          const aY = isCircle(a) ? a.centerY : (a as any).y;
+          const bY = isCircle(b) ? b.centerY : (b as any).y;
           return aY - bY;
         });
         const firstShape = shapes[0];
         const lastShape = shapes[shapes.length - 1];
-        const minY = isCircle(firstShape) ? firstShape.centerY : (isRectangle(firstShape) || isLine(firstShape) ? firstShape.y : firstShape.y);
-        const maxY = isCircle(lastShape) ? lastShape.centerY : (isRectangle(lastShape) || isLine(lastShape) ? lastShape.y : lastShape.y);
+        const minY = isCircle(firstShape) ? firstShape.centerY : (firstShape as any).y;
+        const maxY = isCircle(lastShape) ? lastShape.centerY : (lastShape as any).y;
         const spacing = (maxY - minY) / (shapes.length - 1);
         
+        let hasChanges = false;
         for (let i = 0; i < shapes.length; i++) {
+          const shape = shapes[i];
+          const currentY = isCircle(shape) ? shape.centerY : (shape as any).y;
           const newY = minY + i * spacing;
-          if (isCircle(shapes[i])) {
-            await updateObject(shapes[i].id, { centerY: newY });
+          
+          // Only update if position actually changes
+          if (Math.abs(currentY - newY) > 0.1) {
+            console.log(`🔄 Moving shape ${shape.id}: ${currentY} -> ${newY}`);
+            if (isCircle(shape)) {
+              await updateObject(shape.id, { centerY: newY });
+            } else {
+              await updateObject(shape.id, { y: newY });
+            }
+            hasChanges = true;
           } else {
-            await updateObject(shapes[i].id, { y: newY });
+            console.log(`✅ Shape ${shape.id} already in correct position: ${currentY}`);
           }
+        }
+        
+        if (!hasChanges) {
+          // All shapes already evenly distributed - no changes needed
         }
       }
       
