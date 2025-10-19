@@ -27,9 +27,9 @@ export const getOpenAI = (): OpenAI => {
   return openaiClient;
 };
 
-// Get configured model (default to gpt-4o-mini for speed and cost)
+// Get configured model (default to gpt-4.1 for improved performance)
 export const getModel = (): string => {
-  return process.env.OPENAI_MODEL || "gpt-4o-mini";
+  return process.env.OPENAI_MODEL || "gpt-4.1";
 };
 
 // Validate OpenAI configuration

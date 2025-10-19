@@ -7,6 +7,7 @@ import { CanvasCard } from '../components/canvas-list/CanvasCard';
 import { CreateCanvasModal } from '../components/canvas-list/CreateCanvasModal';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { EmptyState } from '../components/common/EmptyState';
+import { Logo } from '../components/common/Logo';
 
 export function CanvasListPage() {
   const { user, logout } = useAuth();
@@ -114,16 +115,19 @@ export function CanvasListPage() {
       {/* Header with user info and logout button */}
       <header className="absolute top-0 left-0 right-0 bg-white/90 backdrop-blur-sm shadow-lg z-10">
         <div className="px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center">
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">My Canvases</h1>
-            <p className="text-xs text-gray-600">
-              Signed in as <strong>{user.email}</strong>
-              {user.color && (
-                <span className="inline-flex items-center gap-1 ml-2">
-                  <span className="w-3 h-3 rounded-full" style={{ backgroundColor: user.color }}></span>
-                </span>
-              )}
-            </p>
+          <div className="flex items-center gap-3">
+            <Logo size={32} className="flex-shrink-0" />
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">My Canvases</h1>
+              <p className="text-xs text-gray-600">
+                Signed in as <strong>{user.email}</strong>
+                {user.color && (
+                  <span className="inline-flex items-center gap-1 ml-2">
+                    <span className="w-3 h-3 rounded-full" style={{ backgroundColor: user.color }}></span>
+                  </span>
+                )}
+              </p>
+            </div>
           </div>
           <div className="flex items-center gap-3">
             <button

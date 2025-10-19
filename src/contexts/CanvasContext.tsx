@@ -8,6 +8,8 @@ import {
 } from '../utils/firebase';
 import { ref, push, set } from 'firebase/database';
 import { database } from '../config/firebase';
+import { MAX_CANVAS_OBJECTS, CANVAS_LIMITS } from '../constants/canvas';
+import { useToast } from '../hooks/useToast';
 
 // Create the context
 export const CanvasContext = createContext<CanvasContextType | undefined>(undefined);
@@ -24,7 +26,8 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
   const [mode, setMode] = useState<CanvasMode>('pan'); // Default to pan mode
   const [undoState, setUndoState] = useState<UndoState | null>(null);
   const [disableUndoCapture, setDisableUndoCapture] = useState(false);
-  const [performanceMode, setPerformanceMode] = useState(true); // Performance mode toggle (on by default)
+  const [redoState, setRedoState] = useState<UndoState | null>(null);
+  const { showToast } = useToast();
 
   // Set up Firebase listener for real-time sync
   useEffect(() => {
@@ -126,6 +129,9 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
       return;
     }
     
+    // Clear redo state when a new action is performed
+    setRedoState(null);
+    
     // Capture current state of affected shapes BEFORE operation
     const shapesSnapshot = objects.filter(obj => affectedIds.includes(obj.id));
     
@@ -148,6 +154,14 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
 
     // Disable auto-capture during undo to prevent creating new undo state
     setDisableUndoCapture(true);
+
+    // Save current state as redo state before undoing
+    setRedoState({
+      operation: undoState.operation,
+      affectedIds: undoState.affectedIds,
+      shapesSnapshot: objects.filter(obj => undoState.affectedIds.includes(obj.id)),
+      timestamp: Date.now(),
+    });
 
     switch (undoState.operation) {
       case 'create':
@@ -212,8 +226,93 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
     setUndoState(null);
   };
 
+  const redo = async () => {
+    if (!redoState) {
+      return;
+    }
+
+    // Disable auto-capture during redo to prevent creating new undo state
+    setDisableUndoCapture(true);
+
+    // Save current state as undo state before redoing
+    setUndoState({
+      operation: redoState.operation,
+      affectedIds: redoState.affectedIds,
+      shapesSnapshot: objects.filter(obj => redoState.affectedIds.includes(obj.id)),
+      timestamp: Date.now(),
+    });
+
+    switch (redoState.operation) {
+      case 'create':
+        // Recreate the shapes
+        for (const shape of redoState.shapesSnapshot) {
+          const { id, createdAt, updatedAt, ...shapeData } = shape;
+          const now = Date.now();
+          
+          // Optimistic update
+          setObjects((prev) => [...prev, { ...shape, updatedAt: now }]);
+          
+          // Write to Firebase with original ID
+          try {
+            const specificObjectRef = ref(database, `objects/${canvasId}/${id}`);
+            await set(specificObjectRef, {
+              ...shapeData,
+              id,
+              createdAt,
+              updatedAt: now,
+            });
+          } catch (error) {
+            console.error('Error recreating object in Firebase:', error);
+          }
+        }
+        break;
+
+      case 'delete':
+        // Delete the shapes again
+        await deleteObject(redoState.affectedIds);
+        break;
+
+      case 'modify':
+        // Reapply modifications
+        const now = Date.now();
+        
+        // Create a map of ID -> modified shape for quick lookup
+        const shapeMap = new Map(redoState.shapesSnapshot.map(s => [s.id, s]));
+        
+        // Optimistic update: restore all shapes at once
+        setObjects((prev) =>
+          prev.map((obj) => {
+            const modifiedShape = shapeMap.get(obj.id);
+            return modifiedShape ? { ...modifiedShape, updatedAt: now } : obj;
+          })
+        );
+
+        // Write to Firebase - batch all updates
+        await Promise.all(
+          redoState.shapesSnapshot.map((shape) => {
+            const { id, createdAt, updatedAt, ...shapeUpdates } = shape;
+            return updateFirebaseObject(canvasId, id, { ...shapeUpdates, updatedAt: now });
+          })
+        );
+        break;
+    }
+
+    // Re-enable auto-capture
+    setDisableUndoCapture(false);
+
+    // Clear redo state after using it
+    setRedoState(null);
+  };
+
   // Create a new object with Firebase integration
   const createObject = async (objectData: Omit<Rectangle, 'id' | 'createdAt' | 'updatedAt'> | Omit<Circle, 'id' | 'createdAt' | 'updatedAt'> | Omit<Line, 'id' | 'createdAt' | 'updatedAt'> | Omit<Text, 'id' | 'createdAt' | 'updatedAt'>): Promise<string | null> => {
+    // Check canvas object limit
+    if (objects.length >= MAX_CANVAS_OBJECTS) {
+      console.error(CANVAS_LIMITS.MAX_OBJECTS_REACHED);
+      showToast(CANVAS_LIMITS.MAX_OBJECTS_REACHED, 'error');
+      return null;
+    }
+
     // Generate a unique ID using Firebase push
     const objectsRef = ref(database, `objects/${canvasId}`);
     const newObjectRef = push(objectsRef);
@@ -262,6 +361,20 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
     objectsData: Array<Omit<Rectangle, 'id' | 'createdAt' | 'updatedAt'> | Omit<Circle, 'id' | 'createdAt' | 'updatedAt'> | Omit<Line, 'id' | 'createdAt' | 'updatedAt'> | Omit<Text, 'id' | 'createdAt' | 'updatedAt'>>
   ): Promise<string[]> => {
     if (objectsData.length === 0) return [];
+
+    // Check canvas object limit
+    if (objects.length >= MAX_CANVAS_OBJECTS) {
+      console.error(CANVAS_LIMITS.MAX_OBJECTS_REACHED);
+      showToast(CANVAS_LIMITS.MAX_OBJECTS_REACHED, 'error');
+      return [];
+    }
+
+    // Check if batch creation would exceed limit
+    if (objects.length + objectsData.length > MAX_CANVAS_OBJECTS) {
+      console.error(CANVAS_LIMITS.BATCH_CREATION_EXCEEDS_LIMIT);
+      showToast(CANVAS_LIMITS.BATCH_CREATION_EXCEEDS_LIMIT, 'error');
+      return [];
+    }
 
     const now = Date.now();
     const objectsRef = ref(database, `objects/${canvasId}`);
@@ -345,6 +458,39 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
       });
     } catch (error) {
       console.error('Error updating object in Firebase:', error);
+      // Note: Firebase listener will revert to correct state
+    }
+  };
+
+  // Batch update multiple objects with a single Firebase write
+  const updateObjectsBatch = async (updatesMap: Map<string, Partial<Shape>>) => {
+    const now = Date.now();
+    
+    // Optimistic update: update all objects in local state immediately
+    setObjects((prev) =>
+      prev.map((obj) =>
+        updatesMap.has(obj.id)
+          ? { ...obj, ...updatesMap.get(obj.id)!, updatedAt: now } as Shape
+          : obj
+      )
+    );
+
+    // Build Firebase update object
+    const firebaseUpdates: Record<string, any> = {};
+    updatesMap.forEach((updates, id) => {
+      const fullPath = `objects/${canvasId}/${id}`;
+      Object.entries(updates).forEach(([key, value]) => {
+        firebaseUpdates[`${fullPath}/${key}`] = value;
+      });
+      firebaseUpdates[`${fullPath}/updatedAt`] = now;
+    });
+
+    // Single Firebase write for all updates
+    try {
+      const { update } = await import('firebase/database');
+      await update(ref(database), firebaseUpdates);
+    } catch (error) {
+      console.error('Error batch updating objects in Firebase:', error);
       // Note: Firebase listener will revert to correct state
     }
   };
@@ -434,18 +580,19 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
     isLoading,
     mode,
     undoState,
-    performanceMode,
+    redoState,
     setMode,
-    setPerformanceMode,
     createObject,
     createObjectsBatch,
     updateObject,
+    updateObjectsBatch,
     deleteObject,
     selectObject,
     selectMultiple,
     clearSelection,
     deleteSelected,
     undo,
+    redo,
     captureUndoSnapshot,
     clearUndo,
     setDisableUndoCapture,

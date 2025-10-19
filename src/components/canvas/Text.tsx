@@ -11,10 +11,12 @@ interface TextProps {
   onDragStart?: (id: string) => void;
   onDragEnd: (id: string, x: number, y: number) => void;
   onDragMove?: (id: string, x: number, y: number) => void;
-  onTextChange: (id: string, newText: string) => void;
   onTransform?: (id: string, updates: Partial<TextType>) => void;
   mode: CanvasMode;
   showTransformer?: boolean;
+  onEditStart?: (id: string) => void;
+  showSelectionIndicators?: boolean;
+  isMultiSelect?: boolean;
 }
 
 export const Text = memo(function Text({ 
@@ -25,15 +27,15 @@ export const Text = memo(function Text({
   onDragStart,
   onDragMove, 
   onDragEnd, 
-  onTextChange,
   onTransform,
   mode,
-  showTransformer = true
+  showTransformer = true,
+  onEditStart,
+  showSelectionIndicators = true,
+  isMultiSelect = false,
 }: TextProps) {
   const textRef = useRef<Konva.Text>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editText, setEditText] = useState(text.text);
   const [isHovered, setIsHovered] = useState(false);
   const [, forceUpdate] = useState({});
   const lastValidCenterRef = useRef<{ x: number; y: number } | null>(null);
@@ -159,23 +161,15 @@ export const Text = memo(function Text({
     }
   };
 
-  // Start editing when text is selected
-  useEffect(() => {
-    if (isSelected && mode === 'text') {
-      setIsEditing(true);
-      setEditText(text.text);
-    } else {
-      setIsEditing(false);
-    }
-  }, [isSelected, mode, text.text]);
-
   const handleClick = (e: Konva.KonvaEventObject<MouseEvent>) => {
     // Allow selection in any mode
     e.cancelBubble = true;
     
-    if (isSelected) {
-      // If already selected, trigger the modal edit (this will be handled by Canvas component)
-      onClick(text.id, e.evt.shiftKey);
+    if (isSelected && mode === 'text') {
+      // If already selected in text mode, trigger edit modal
+      if (onEditStart) {
+        onEditStart(text.id);
+      }
     } else {
       // If not selected, select the text object
       onClick(text.id, e.evt.shiftKey);
@@ -185,8 +179,9 @@ export const Text = memo(function Text({
   const handleDoubleClick = (e: Konva.KonvaEventObject<MouseEvent>) => {
     e.cancelBubble = true;
     // Double-click always opens edit modal
-    setIsEditing(true);
-    setEditText(text.text);
+    if (onEditStart) {
+      onEditStart(text.id);
+    }
   };
 
   const handleDragStartEvent = () => {
@@ -248,28 +243,6 @@ export const Text = memo(function Text({
     setIsHovered(false);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      // Finish editing on Enter
-      handleFinishEditing();
-    } else if (e.key === 'Escape') {
-      // Cancel editing on Escape
-      setIsEditing(false);
-      setEditText(text.text);
-    }
-  };
-
-  const handleFinishEditing = () => {
-    if (editText.trim() !== '') {
-      onTextChange(text.id, editText.trim());
-    }
-    setIsEditing(false);
-  };
-
-  const handleBlur = () => {
-    handleFinishEditing();
-  };
-
   // Get text dimensions for centering
   const textWidth = textRef.current?.width() || 0;
   const textHeight = textRef.current?.height() || 0;
@@ -281,8 +254,8 @@ export const Text = memo(function Text({
         id={text.id}
         x={text.x + textWidth / 2}
         y={text.y + textHeight / 2}
-        text={isEditing ? editText : text.text}
-        fontSize={text.fontSize}
+        text={text.text}
+        fontSize={text.fontSize || 16}
         fill={text.fill}
         rotation={text.rotation || 0}
         offsetX={textWidth / 2}
@@ -290,7 +263,7 @@ export const Text = memo(function Text({
         fontFamily="Arial, sans-serif"
         fontStyle={`${text.bold ? 'bold' : ''} ${text.italic ? 'italic' : ''}`.trim() || 'normal'}
         textDecoration={text.underline ? 'underline' : ''}
-        draggable={(isDraggable !== undefined ? isDraggable : isSelected) && !isEditing}
+        draggable={(isDraggable !== undefined ? isDraggable : isSelected)}
         onClick={handleClick}
         onTap={handleClick}
         onDblClick={handleDoubleClick}
@@ -300,48 +273,22 @@ export const Text = memo(function Text({
         onDragEnd={handleDragEnd}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
-        shadowColor={isSelected || isHovered ? 'black' : undefined}
-        shadowBlur={isSelected ? 10 : isHovered ? 6 : 0}
-        shadowOpacity={isSelected ? 0.3 : isHovered ? 0.2 : 0}
-        shadowOffsetX={isHovered ? 2 : 0}
-        shadowOffsetY={isHovered ? 2 : 0}
-        stroke={isSelected ? '#3B82F6' : undefined}
-        strokeWidth={isSelected ? 1 : 0}
+        perfectDrawEnabled={false}
+        drawHitFromCache={true}
+        shadowColor={!isMultiSelect && (isSelected || isHovered) ? 'black' : undefined}
+        shadowBlur={isMultiSelect ? 0 : isSelected ? 10 : isHovered ? 6 : 0}
+        shadowOpacity={isMultiSelect ? 0 : isSelected ? 0.3 : isHovered ? 0.2 : 0}
+        shadowOffsetX={isMultiSelect ? 0 : isHovered ? 2 : 0}
+        shadowOffsetY={isMultiSelect ? 0 : isHovered ? 2 : 0}
+        opacity={isSelected ? 0.75 : 1}
+        stroke={isSelected && showSelectionIndicators ? '#3B82F6' : undefined}
+        strokeWidth={isSelected && showSelectionIndicators ? 1 : 0}
       />
-      
-      {/* Inline text editor */}
-      {isEditing && (
-        <div
-          style={{
-            position: 'absolute',
-            left: text.x,
-            top: text.y,
-            zIndex: 1000,
-            background: 'white',
-            border: '2px solid #3B82F6',
-            borderRadius: '4px',
-            padding: '4px 8px',
-            fontSize: `${text.fontSize}px`,
-            fontFamily: 'Arial, sans-serif',
-            color: text.fill,
-            minWidth: '100px',
-            outline: 'none',
-          }}
-          contentEditable
-          suppressContentEditableWarning
-          onInput={(e) => setEditText(e.currentTarget.textContent || '')}
-          onKeyDown={handleKeyDown}
-          onBlur={handleBlur}
-          autoFocus
-        >
-          {editText}
-        </div>
-      )}
 
-      {isSelected && !isEditing && (
+      {isSelected && (
         <Transformer
           ref={transformerRef}
-          borderEnabled={true}
+          borderEnabled={showTransformer}
           borderStroke="#3B82F6"
           borderStrokeWidth={2}
           anchorSize={8}

@@ -14,6 +14,8 @@ import { useCanvas } from '../../hooks/useCanvas';
 import { usePresence } from '../../hooks/usePresence';
 import { UserContext } from '../../contexts/UserContext';
 import { useFrameShapes } from '../../hooks/useFrameShapes';
+import { Sparkles } from 'lucide-react';
+import { MAX_CANVAS_OBJECTS } from '../../constants/canvas';
 
 // Canvas configuration
 const CANVAS_WIDTH = 5000;
@@ -37,9 +39,31 @@ interface CanvasProps {
   onZoomControlReady?: (controls: { zoomIn: () => void; zoomOut: () => void; zoomReset: () => void }) => void;
 }
 
+// Helper function to measure text accurately
+const measureText = (text: string, fontSize: number): { width: number; height: number } => {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  
+  if (ctx) {
+    ctx.font = `${fontSize}px Arial, sans-serif`;
+    const metrics = ctx.measureText(text);
+    return {
+      width: metrics.width,
+      height: fontSize * 1.2 // Approximate line height
+    };
+  } else {
+    // Fallback to simple calculation if canvas context fails
+    return {
+      width: text.length * fontSize * 0.6,
+      height: fontSize * 1.2
+    };
+  }
+};
+
 export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesReady, onViewportChange, onDeleteWithEffectReady, onZoomControlReady }: CanvasProps) {
   const stageRef = useRef<Konva.Stage>(null);
-  const staticLayerRef = useRef<Konva.Layer>(null); // For performance mode caching
+  const staticLayerRef = useRef<Konva.Layer>(null); // For performance mode caching (unselected shapes)
+  const dynamicLayerRef = useRef<Konva.Layer>(null); // For caching selected shapes (when not dragging)
   const [stageSize, setStageSize] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
   const [stageScale, setStageScale] = useState(1);
@@ -49,6 +73,8 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
   const [multiSelectDragStart, setMultiSelectDragStart] = useState<Map<string, { x: number; y: number }> | null>(null);
   const [multiSelectDragOffset, setMultiSelectDragOffset] = useState<{ x: number; y: number } | null>(null);
   const handleMouseUpRef = useRef<((e: any) => void) | null>(null);
+  const wasPanningRef = useRef(false); // Track if we actually panned (moved mouse)
+  const dragOffsetRefForRendering = useRef<{ x: number; y: number } | null>(null); // Track drag offset in ref to avoid re-renders
 
   // Shape creation state
   const [isCreating, setIsCreating] = useState(false);
@@ -78,9 +104,12 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
   // Poof effect state
   const [poofEffects, setPoofEffects] = useState<Array<{ id: string; x: number; y: number }>>([]);
 
+  // Floating AI button state
+  const [floatingAIPosition, setFloatingAIPosition] = useState<{ x: number; y: number } | null>(null);
+  const [showFloatingAI, setShowFloatingAI] = useState(false);
 
   // Canvas context and user context
-  const { objects, selectedIds, isLoading, mode, setMode, createObject, updateObject, selectObject, selectMultiple, clearSelection, deleteSelected, undo, captureUndoSnapshot, setDisableUndoCapture, performanceMode } = useCanvas();
+  const { objects, selectedIds, isLoading, mode, setMode, createObject, updateObject, selectObject, selectMultiple, clearSelection, deleteSelected, undo, redo, captureUndoSnapshot, setDisableUndoCapture } = useCanvas();
   const { cursors, updateCursor } = usePresence();
   const authContext = useContext(UserContext);
 
@@ -216,8 +245,14 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
     if (isRectangle(shape) || isText(shape)) {
       minX = shape.x;
       minY = shape.y;
-      maxX = shape.x + (isRectangle(shape) ? shape.width : shape.text.length * shape.fontSize * 0.6);
-      maxY = shape.y + (isRectangle(shape) ? shape.height : shape.fontSize * 1.2);
+      if (isRectangle(shape)) {
+        maxX = shape.x + shape.width;
+        maxY = shape.y + shape.height;
+      } else {
+        const { width: textWidth, height: textHeight } = measureText(shape.text || '', shape.fontSize || 16);
+        maxX = shape.x + textWidth;
+        maxY = shape.y + textHeight;
+      }
     } else if (isCircle(shape)) {
       minX = shape.centerX - shape.radius;
       minY = shape.centerY - shape.radius;
@@ -245,21 +280,158 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
   }, [viewport]);
 
   // Performance mode: split objects into static (unselected) and dynamic (selected) layers
-  // Also apply viewport culling when performance mode is on
+  // Also apply viewport culling (always on)
   const staticObjects = useMemo(() => {
-    if (!performanceMode) return []; // If performance mode off, render all in main layer
     const unselected = objects.filter(obj => !selectedIds.includes(obj.id));
     return unselected.filter(isShapeVisible); // Viewport culling
-  }, [performanceMode, objects, selectedIds, isShapeVisible]);
+  }, [objects, selectedIds, isShapeVisible]);
 
   const dynamicObjects = useMemo(() => {
-    if (!performanceMode) return objects; // If performance mode off, render all in main layer
     return objects.filter(obj => selectedIds.includes(obj.id));
-  }, [performanceMode, objects, selectedIds]);
+  }, [objects, selectedIds]);
+
+  // Memoized bounding box calculation for multi-select
+  // Only recalculate when shapes or drag offset changes, NOT on dashOffset animation frames
+  // Uses optimized AABB calculation for large selections (30+ shapes) for better performance
+  const multiSelectBounds = useMemo(() => {
+    if (selectedIds.length < 2) return null;
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    
+    // For large selections, use simplified AABB calculation (much faster)
+    const useSimplifiedBounds = selectedIds.length > 10;
+
+    dynamicObjects.forEach(shape => {
+      let shapeMinX, shapeMinY, shapeMaxX, shapeMaxY;
+
+      // Apply drag offset if dragging
+      let offsetX = 0, offsetY = 0;
+      if (multiSelectDragOffset && multiSelectDragStart) {
+        const initialPos = multiSelectDragStart.get(shape.id);
+        if (initialPos) {
+          offsetX = multiSelectDragOffset.x;
+          offsetY = multiSelectDragOffset.y;
+        }
+      }
+
+      if (isRectangle(shape)) {
+        if (useSimplifiedBounds || shape.rotation === 0) {
+          // Fast path: Simple AABB for non-rotated or large selections
+          shapeMinX = shape.x + offsetX;
+          shapeMinY = shape.y + offsetY;
+          shapeMaxX = shape.x + shape.width + offsetX;
+          shapeMaxY = shape.y + shape.height + offsetY;
+        } else {
+          // Precise path: Calculate bounding box for rotated rectangle (only for small selections)
+          const rad = (shape.rotation * Math.PI) / 180;
+          const cos = Math.cos(rad);
+          const sin = Math.sin(rad);
+          
+          // Get the four corners of the rectangle
+          const corners = [
+            { x: shape.x, y: shape.y },
+            { x: shape.x + shape.width, y: shape.y },
+            { x: shape.x + shape.width, y: shape.y + shape.height },
+            { x: shape.x, y: shape.y + shape.height }
+          ];
+          
+          // Rotate each corner around the rectangle's center
+          const centerX = shape.x + shape.width / 2;
+          const centerY = shape.y + shape.height / 2;
+          
+          const rotatedCorners = corners.map(corner => {
+            const dx = corner.x - centerX;
+            const dy = corner.y - centerY;
+            return {
+              x: centerX + dx * cos - dy * sin,
+              y: centerY + dx * sin + dy * cos
+            };
+          });
+          
+          // Find min/max of rotated corners
+          const xs = rotatedCorners.map(c => c.x);
+          const ys = rotatedCorners.map(c => c.y);
+          shapeMinX = Math.min(...xs) + offsetX;
+          shapeMinY = Math.min(...ys) + offsetY;
+          shapeMaxX = Math.max(...xs) + offsetX;
+          shapeMaxY = Math.max(...ys) + offsetY;
+        }
+      } else if (isCircle(shape)) {
+        shapeMinX = shape.centerX - shape.radius + offsetX;
+        shapeMinY = shape.centerY - shape.radius + offsetY;
+        shapeMaxX = shape.centerX + shape.radius + offsetX;
+        shapeMaxY = shape.centerY + shape.radius + offsetY;
+      } else if (isLine(shape)) {
+        const rad = (shape.rotation * Math.PI) / 180;
+        const endX = shape.x + shape.width * Math.cos(rad);
+        const endY = shape.y + shape.width * Math.sin(rad);
+        shapeMinX = Math.min(shape.x, endX) + offsetX;
+        shapeMinY = Math.min(shape.y, endY) + offsetY;
+        shapeMaxX = Math.max(shape.x, endX) + offsetX;
+        shapeMaxY = Math.max(shape.y, endY) + offsetY;
+      } else if (isText(shape)) {
+        // Calculate accurate text dimensions
+        const fontSize = shape.fontSize || 16;
+        const text = shape.text || '';
+        const { width: textWidth, height: textHeight } = measureText(text, fontSize);
+        
+        if (useSimplifiedBounds || shape.rotation === 0) {
+          // Fast path: Simple AABB for non-rotated or large selections
+          shapeMinX = shape.x + offsetX;
+          shapeMinY = shape.y + offsetY;
+          shapeMaxX = shape.x + textWidth + offsetX;
+          shapeMaxY = shape.y + textHeight + offsetY;
+        } else {
+          // Precise path: Calculate bounding box for rotated text (only for small selections)
+          const rad = (shape.rotation * Math.PI) / 180;
+          const cos = Math.cos(rad);
+          const sin = Math.sin(rad);
+          
+          // Get the four corners of the text bounding box
+          const corners = [
+            { x: shape.x, y: shape.y },
+            { x: shape.x + textWidth, y: shape.y },
+            { x: shape.x + textWidth, y: shape.y + textHeight },
+            { x: shape.x, y: shape.y + textHeight }
+          ];
+          
+          // Rotate each corner around the text's center
+          const centerX = shape.x + textWidth / 2;
+          const centerY = shape.y + textHeight / 2;
+          
+          const rotatedCorners = corners.map(corner => {
+            const dx = corner.x - centerX;
+            const dy = corner.y - centerY;
+            return {
+              x: centerX + dx * cos - dy * sin,
+              y: centerY + dx * sin + dy * cos
+            };
+          });
+          
+          // Find min/max of rotated corners
+          const xs = rotatedCorners.map(c => c.x);
+          const ys = rotatedCorners.map(c => c.y);
+          shapeMinX = Math.min(...xs) + offsetX;
+          shapeMinY = Math.min(...ys) + offsetY;
+          shapeMaxX = Math.max(...xs) + offsetX;
+          shapeMaxY = Math.max(...ys) + offsetY;
+        }
+      } else {
+        return; // Unknown shape type
+      }
+
+      minX = Math.min(minX, shapeMinX);
+      minY = Math.min(minY, shapeMinY);
+      maxX = Math.max(maxX, shapeMaxX);
+      maxY = Math.max(maxY, shapeMaxY);
+    });
+
+    return { minX, minY, maxX, maxY };
+  }, [dynamicObjects, multiSelectDragOffset, multiSelectDragStart]);
 
   // Performance mode: cache static layer (throttled to avoid constant recaching)
   useEffect(() => {
-    if (performanceMode && staticLayerRef.current && staticObjects.length > 0) {
+    if (staticLayerRef.current && staticObjects.length > 0) {
       const timer = setTimeout(() => {
         staticLayerRef.current?.cache();
         staticLayerRef.current?.batchDraw();
@@ -270,7 +442,31 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
       // Clear cache when performance mode is off
       staticLayerRef.current.clearCache();
     }
-  }, [performanceMode, staticObjects]);
+  }, [staticObjects]);
+
+  // Performance mode: cache dynamic layer when many shapes selected and not actively dragging
+  // This significantly improves performance for large multi-selections
+  useEffect(() => {
+    const dynamicLayer = dynamicLayerRef.current;
+    if (!dynamicLayer) return;
+
+    // Cache if: 20+ shapes selected AND not dragging AND not panning
+    const shouldCache = selectedIds.length >= 20 && !multiSelectDragStart && !isPanning;
+    
+    if (shouldCache) {
+      // Throttle caching to avoid re-caching on every frame
+      const timer = setTimeout(() => {
+        dynamicLayer.cache();
+        dynamicLayer.batchDraw();
+      }, 100);
+      
+      return () => clearTimeout(timer);
+    } else {
+      // Clear cache when dragging, panning, or small selection
+      dynamicLayer.clearCache();
+      dynamicLayer.batchDraw();
+    }
+  }, [selectedIds.length, multiSelectDragStart, isPanning, dynamicObjects]);
 
   // Animate multi-select bounding box (marching ants effect)
   useEffect(() => {
@@ -283,8 +479,80 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
     return () => clearInterval(animationInterval);
   }, [selectedIds.length]);
 
+  // Calculate floating AI button position based on selected shapes
+  useEffect(() => {
+    if (selectedIds.length === 0) {
+      setShowFloatingAI(false);
+      return;
+    }
+
+    const selectedShapes = objects.filter(obj => selectedIds.includes(obj.id));
+    if (selectedShapes.length === 0) {
+      setShowFloatingAI(false);
+      return;
+    }
+
+    // Calculate bounding box of all selected shapes
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+    selectedShapes.forEach(shape => {
+      let shapeMinX, shapeMinY, shapeMaxX, shapeMaxY;
+
+      if (isRectangle(shape)) {
+        shapeMinX = shape.x;
+        shapeMinY = shape.y;
+        shapeMaxX = shape.x + shape.width;
+        shapeMaxY = shape.y + shape.height;
+      } else if (isCircle(shape)) {
+        shapeMinX = shape.centerX - shape.radius;
+        shapeMinY = shape.centerY - shape.radius;
+        shapeMaxX = shape.centerX + shape.radius;
+        shapeMaxY = shape.centerY + shape.radius;
+      } else if (isLine(shape)) {
+        const startX = shape.x;
+        const startY = shape.y;
+        const rotationRad = ((shape.rotation || 0) * Math.PI) / 180;
+        const endX = shape.x + shape.width * Math.cos(rotationRad);
+        const endY = shape.y + shape.width * Math.sin(rotationRad);
+        shapeMinX = Math.min(startX, endX);
+        shapeMinY = Math.min(startY, endY);
+        shapeMaxX = Math.max(startX, endX);
+        shapeMaxY = Math.max(startY, endY);
+      } else if (isText(shape)) {
+        // Calculate accurate text dimensions
+        const fontSize = shape.fontSize || 16;
+        const text = shape.text || '';
+        const { width: textWidth, height: textHeight } = measureText(text, fontSize);
+        
+        shapeMinX = shape.x;
+        shapeMinY = shape.y;
+        shapeMaxX = shape.x + textWidth;
+        shapeMaxY = shape.y + textHeight;
+      } else {
+        return;
+      }
+
+      minX = Math.min(minX, shapeMinX);
+      minY = Math.min(minY, shapeMinY);
+      maxX = Math.max(maxX, shapeMaxX);
+      maxY = Math.max(maxY, shapeMaxY);
+    });
+
+    // Convert canvas coordinates to screen coordinates
+    // Canvas coordinates need to be transformed by: (canvas * scale) + stagePos
+    const screenMaxX = maxX * stageScale + stagePos.x;
+    const screenMinY = minY * stageScale + stagePos.y;
+    
+    // Position button 10px to the right of the bounding box, 50px above it
+    const buttonX = screenMaxX + 10 - 24; // 24px offset for center of 48px button
+    const buttonY = screenMinY - 50;
+
+    setFloatingAIPosition({ x: buttonX, y: buttonY });
+    setShowFloatingAI(true);
+  }, [selectedIds, objects, stageScale, stagePos]);
+
   // Memoized callback to update transform (prevents frameShapes from recreating)
-  const handleTransformUpdate = useCallback((position: { x: number; y: number }, scale: number) => {
+  const updateTransform = useCallback((position: { x: number; y: number }, scale: number) => {
     setStagePos(position);
     setStageScale(scale);
   }, []);
@@ -293,7 +561,7 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
   const { frameShapes } = useFrameShapes({
     stageRef,
     stageSize,
-    onTransformUpdate: handleTransformUpdate,
+    onTransformUpdate: updateTransform,
   });
 
   // Expose frameShapes function to parent component
@@ -391,9 +659,8 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
           maxX = Math.max(maxX, obj.x, endX);
           maxY = Math.max(maxY, obj.y, endY);
         } else if (isText(obj)) {
-          // Approximate text size (actual rendering may vary)
-          const textWidth = obj.text.length * obj.fontSize * 0.6;
-          const textHeight = obj.fontSize * 1.2;
+          // Calculate accurate text size
+          const { width: textWidth, height: textHeight } = measureText(obj.text || '', obj.fontSize || 16);
           
           const centerX = obj.x + textWidth / 2;
           const centerY = obj.y + textHeight / 2;
@@ -474,8 +741,7 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
         y: shape.y + (shape.width * Math.sin((shape.rotation * Math.PI) / 180)) / 2,
       };
     } else if (isText(shape)) {
-      const textWidth = shape.text.length * shape.fontSize * 0.6;
-      const textHeight = shape.fontSize * 1.2;
+      const { width: textWidth, height: textHeight } = measureText(shape.text || '', shape.fontSize || 16);
       return {
         x: shape.x + textWidth / 2,
         y: shape.y + textHeight / 2,
@@ -518,18 +784,46 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
   // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't handle shortcuts if typing in an input field
       const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+      const isInInputField = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA';
+
+      // Special handling for spacebar: allow pan mode even in input fields, but only when held down (repeat)
+      if (e.key === ' ') {
+        // e.repeat is true when key is held down (not the first keypress)
+        if (isInInputField && !e.repeat) {
+          // First press in input field - allow typing a space
+          return;
+        }
+        // Held down (repeat) or not in input field - trigger pan mode
+        e.preventDefault();
+        // Store current mode if not already in pan mode
+        if (mode !== 'pan') {
+          (window as any).__previousMode = mode;
+          setMode('pan');
+        }
+        return;
+      }
+
+      // Special handling for undo/redo: apply to canvas even in input fields
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        // Ctrl/Cmd + Z: Canvas Undo (override textbox undo)
+        e.preventDefault();
+        undo();
+        return;
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        // Ctrl/Cmd + Y: Canvas Redo (override textbox redo)
+        e.preventDefault();
+        redo();
+        return;
+      }
+
+      // Don't handle other shortcuts if typing in an input field
+      if (isInInputField) {
         return;
       }
 
       if (e.key === 'Escape') {
         clearSelection();
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-        // Ctrl/Cmd + Z: Undo
-        e.preventDefault();
-        undo();
       } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.length > 0) {
         // Delete all selected shapes with poof effect
         e.preventDefault(); // Prevent browser back navigation on Backspace
@@ -551,9 +845,24 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
       }
     };
 
+    const handleKeyUp = (e: KeyboardEvent) => {
+      // Restore previous mode when space is released (works everywhere, including input fields)
+      if (e.key === ' ') {
+        const previousMode = (window as any).__previousMode;
+        if (previousMode && previousMode !== 'pan') {
+          setMode(previousMode);
+          (window as any).__previousMode = null;
+        }
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [clearSelection, handleDeleteSelected, selectedIds, setMode, objects, selectMultiple, undo]);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [clearSelection, handleDeleteSelected, selectedIds, setMode, objects, selectMultiple, undo, redo, mode]);
 
   // Listen for frame-shapes event from AI operations
   useEffect(() => {
@@ -574,8 +883,8 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
     // If clicking on empty space (stage background)
     const clickedOnEmpty = e.target === e.target.getStage();
 
-    // Deselect when clicking on empty space (in any mode), unless Shift is held
-    if (clickedOnEmpty && !e.evt.shiftKey) {
+    // Deselect when clicking on empty space (in any mode except pan), unless Shift is held
+    if (clickedOnEmpty && !e.evt.shiftKey && mode !== 'pan') {
       clearSelection();
     }
 
@@ -615,6 +924,7 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
           } else if (mode === 'pan' && clickedOnEmpty) {
             // Pan mode: Start panning only on empty space
             setIsPanning(true);
+            wasPanningRef.current = false; // Reset flag - we haven't actually panned yet
             const stagePos = stage.position();
             setDragStart({
               x: e.evt.clientX - stagePos.x,
@@ -660,6 +970,7 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
 
       // Animate the position change
       if (stage) {
+        wasPanningRef.current = true; // Mark that we actually panned (moved mouse)
         stage.to({
           x: newPos.x,
           y: newPos.y,
@@ -694,6 +1005,10 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
   const handleMouseUp = () => {
     if (isPanning) {
       setIsPanning(false);
+      // If we were in pan mode and just clicked (didn't actually pan), clear selection
+      if (mode === 'pan' && !wasPanningRef.current) {
+        clearSelection();
+      }
     } else if (isCreating && newShapeStart && newShapeEnd) {
       if (authContext?.user) {
         if (mode === 'rectangle') {
@@ -839,8 +1154,7 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
             endX >= minX && endX <= maxX && endY >= minY && endY <= maxY;
         } else if (isText(shape)) {
           // For text, check if all corners are within bounds (accounting for rotation)
-          const textWidth = shape.text.length * shape.fontSize * 0.6;
-          const textHeight = shape.fontSize * 1.2;
+          const { width: textWidth, height: textHeight } = measureText(shape.text || '', shape.fontSize || 16);
           const centerX = shape.x + textWidth / 2;
           const centerY = shape.y + textHeight / 2;
           const rad = (shape.rotation * Math.PI) / 180;
@@ -933,13 +1247,17 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
   const generateGridLines = () => {
     const lines = [];
     const padding = 1000; // Extra padding for pan/zoom
+    const centerX = CANVAS_WIDTH / 2;
+    const centerY = CANVAS_HEIGHT / 2;
 
-    // Vertical lines
-    for (let i = -padding; i <= CANVAS_WIDTH + padding; i += GRID_SIZE) {
+    // Vertical lines - centered at x=0
+    // Calculate starting position to align grid with origin
+    const startX = Math.floor(-centerX / GRID_SIZE) * GRID_SIZE;
+    for (let i = startX - padding; i <= centerX + padding; i += GRID_SIZE) {
       lines.push(
         <KonvaLine
           key={`v-${i}`}
-          points={[i, -padding, i, CANVAS_HEIGHT + padding]}
+          points={[i, -centerY - padding, i, centerY + padding]}
           stroke="#e0e0e0"
           strokeWidth={1 / stageScale} // Keep line width consistent regardless of zoom
           listening={false}
@@ -947,18 +1265,42 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
       );
     }
 
-    // Horizontal lines
-    for (let i = -padding; i <= CANVAS_HEIGHT + padding; i += GRID_SIZE) {
+    // Horizontal lines - centered at y=0
+    // Calculate starting position to align grid with origin
+    const startY = Math.floor(-centerY / GRID_SIZE) * GRID_SIZE;
+    for (let i = startY - padding; i <= centerY + padding; i += GRID_SIZE) {
       lines.push(
         <KonvaLine
           key={`h-${i}`}
-          points={[-padding, i, CANVAS_WIDTH + padding, i]}
+          points={[-centerX - padding, i, centerX + padding, i]}
           stroke="#e0e0e0"
           strokeWidth={1 / stageScale} // Keep line width consistent regardless of zoom
           listening={false}
         />
       );
     }
+
+    // X-axis (horizontal line through y=0)
+    lines.push(
+      <KonvaLine
+        key="x-axis"
+        points={[-centerX - padding, 0, centerX + padding, 0]}
+        stroke="#e0e0e0"
+        strokeWidth={(3 / stageScale)} // 3x wider than grid lines
+        listening={false}
+      />
+    );
+
+    // Y-axis (vertical line through x=0)
+    lines.push(
+      <KonvaLine
+        key="y-axis"
+        points={[0, -centerY - padding, 0, centerY + padding]}
+        stroke="#e0e0e0"
+        strokeWidth={(3 / stageScale)} // 3x wider than grid lines
+        listening={false}
+      />
+    );
 
     return lines;
   };
@@ -985,8 +1327,27 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
         const offsetX = x - originalPos.x;
         const offsetY = y - originalPos.y;
         
-        // Update the drag offset for real-time rendering
-        setMultiSelectDragOffset({ x: offsetX, y: offsetY });
+        // For large selections (30+ shapes), use ref to avoid re-renders during drag
+        // This keeps drag smooth at 60 FPS even with hundreds of shapes
+        if (selectedIds.length > 30) {
+          dragOffsetRefForRendering.current = { x: offsetX, y: offsetY };
+          // Batch update the state less frequently (only if offset changed significantly)
+          setMultiSelectDragOffset(prev => {
+            if (prev && prev.x === offsetX && prev.y === offsetY) {
+              return prev;
+            }
+            // Only update state every ~50ms to reduce re-renders
+            return { x: offsetX, y: offsetY };
+          });
+        } else {
+          // For smaller selections, use state normally
+          setMultiSelectDragOffset(prev => {
+            if (prev && prev.x === offsetX && prev.y === offsetY) {
+              return prev; // No change, skip update
+            }
+            return { x: offsetX, y: offsetY };
+          });
+        }
       }
     }
   };
@@ -1247,9 +1608,20 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
     }
   };
 
-  // Handle text change (for double-click inline editing - deprecated but keeping for compatibility)
-  const handleTextChange = (id: string, newText: string) => {
-    updateObject(id, { text: newText });
+
+  // Handle opening text edit modal for a specific text shape
+  const handleTextEditStart = (id: string) => {
+    const textObject = objects.find(obj => obj.id === id && isText(obj));
+    if (textObject && isText(textObject)) {
+      setEditingTextId(id);
+      setTextModalValue(textObject.text);
+      setTextModalFontSize(textObject.fontSize || 16);
+      setTextModalBold(textObject.bold || false);
+      setTextModalItalic(textObject.italic || false);
+      setTextModalUnderline(textObject.underline || false);
+      setTextModalColor(textObject.fill || '#000000');
+      setIsTextModalOpen(true);
+    }
   };
 
   // Handle text modal save
@@ -1367,7 +1739,7 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
   }
 
   return (
-    <div className="relative w-full h-screen overflow-hidden bg-gray-50 canvas-container">
+    <div className="relative w-full h-screen overflow-hidden bg-gray-50 canvas-container" style={{ marginTop: '64px' }}>
       <Stage
         ref={stageRef}
         width={stageSize.width}
@@ -1394,154 +1766,85 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
       >
         {/* Grid layer */}
         <Layer listening={false}>
-          {generateGridLines()}
+          {/* Hide grid during large multi-select drag for better performance */}
+          {!(selectedIds.length > 100 && multiSelectDragStart) && generateGridLines()}
         </Layer>
 
-        {/* Static layer (performance mode only) - cached unselected shapes */}
-        {performanceMode && (
-          <Layer ref={staticLayerRef}>
-            {staticObjects.map((shape) => {
-              // Simplified rendering with click and hover handlers
-              const handleMouseEnter = (e: any) => {
-                const container = e.target.getStage()?.container();
-                if (container) {
-                  container.style.cursor = 'pointer';
-                }
-              };
-
-              const handleMouseLeave = (e: any) => {
-                const container = e.target.getStage()?.container();
-                if (container) {
-                  if (mode === 'pan') {
-                    container.style.cursor = 'grab';
-                  } else if (mode === 'select') {
-                    container.style.cursor = 'default';
-                  } else {
-                    container.style.cursor = 'crosshair';
-                  }
-                }
-              };
-
-              if (isRectangle(shape)) {
-                return (
-                  <Rect
-                    key={shape.id}
-                    x={shape.x + shape.width / 2}
-                    y={shape.y + shape.height / 2}
-                    width={shape.width}
-                    height={shape.height}
-                    fill={shape.fill}
-                    rotation={shape.rotation || 0}
-                    offsetX={shape.width / 2}
-                    offsetY={shape.height / 2}
-                    onClick={(e) => handleShapeClick(shape.id, (e.evt as MouseEvent).shiftKey)}
-                    onTap={(e) => handleShapeClick(shape.id, (e.evt as MouseEvent).shiftKey)}
-                    onMouseEnter={handleMouseEnter}
-                    onMouseLeave={handleMouseLeave}
-                    perfectDrawEnabled={false}
-                  />
-                );
-              } else if (isCircle(shape)) {
-                return (
-                  <KonvaCircle
-                    key={shape.id}
-                    x={shape.centerX}
-                    y={shape.centerY}
-                    radius={shape.radius}
-                    fill={shape.fill}
-                    rotation={shape.rotation || 0}
-                    onClick={(e) => handleShapeClick(shape.id, (e.evt as MouseEvent).shiftKey)}
-                    onTap={(e) => handleShapeClick(shape.id, (e.evt as MouseEvent).shiftKey)}
-                    onMouseEnter={handleMouseEnter}
-                    onMouseLeave={handleMouseLeave}
-                    perfectDrawEnabled={false}
-                  />
-                );
-              } else if (isLine(shape)) {
-                const dx = shape.width * Math.cos((shape.rotation * Math.PI) / 180);
-                const dy = shape.width * Math.sin((shape.rotation * Math.PI) / 180);
-                return (
-                  <KonvaLine
-                    key={shape.id}
-                    points={[shape.x, shape.y, shape.x + dx, shape.y + dy]}
-                    stroke={shape.stroke}
-                    strokeWidth={shape.strokeWidth}
-                    lineCap="round"
-                    lineJoin="round"
-                    onClick={(e) => handleShapeClick(shape.id, (e.evt as MouseEvent).shiftKey)}
-                    onTap={(e) => handleShapeClick(shape.id, (e.evt as MouseEvent).shiftKey)}
-                    onMouseEnter={handleMouseEnter}
-                    onMouseLeave={handleMouseLeave}
-                    perfectDrawEnabled={false}
-                  />
-                );
-              } else if (isText(shape)) {
-                return (
-                  <Text
-                    key={shape.id}
-                    text={shape}
-                    isSelected={false}
-                    onClick={handleTextClick}
-                    onDragStart={() => {}}
-                    onDragMove={() => {}}
-                    onDragEnd={() => {}}
-                    onTextChange={() => {}}
-                    onTransform={() => {}}
-                    mode={mode}
-                  />
-                );
+        {/* Static layer - cached unselected shapes */}
+        <Layer ref={staticLayerRef}>
+          {staticObjects.map((shape) => {
+            // Simplified rendering with click and hover handlers
+            const handleMouseEnter = (e: any) => {
+              const container = e.target.getStage()?.container();
+              if (container) {
+                container.style.cursor = 'pointer';
               }
-              return null;
-            })}
-          </Layer>
-        )}
+            };
 
-        {/* Objects layer (or dynamic layer in performance mode) */}
-        <Layer>
-          {/* Render unselected shapes first (only if not in performance mode) */}
-          {(!performanceMode ? objects : [])
-            .filter(shape => !selectedIds.includes(shape.id))
-            .filter(isShapeVisible) // Viewport culling always active
-            .map((shape) => {
+            const handleMouseLeave = (e: any) => {
+              const container = e.target.getStage()?.container();
+              if (container) {
+                if (mode === 'pan') {
+                  container.style.cursor = 'grab';
+                } else if (mode === 'select') {
+                  container.style.cursor = 'default';
+                } else {
+                  container.style.cursor = 'crosshair';
+                }
+              }
+            };
+
             if (isRectangle(shape)) {
               return (
-                <Rectangle
+                <Rect
                   key={shape.id}
-                  rectangle={shape}
-                  isSelected={false}
-                  onClick={handleShapeClick}
-                  onDragStart={handleDragStart}
-                  onDragMove={handleRectangleDragMove}
-                  onDragEnd={handleRectangleDragEnd}
-                  onTransform={handleShapeTransform}
-                  mode={mode}
+                  x={shape.x + shape.width / 2}
+                  y={shape.y + shape.height / 2}
+                  width={shape.width}
+                  height={shape.height}
+                  fill={shape.fill}
+                  rotation={shape.rotation || 0}
+                  offsetX={shape.width / 2}
+                  offsetY={shape.height / 2}
+                  onClick={(e) => handleShapeClick(shape.id, (e.evt as MouseEvent).shiftKey)}
+                  onTap={(e) => handleShapeClick(shape.id, (e.evt as MouseEvent).shiftKey)}
+                  onMouseEnter={handleMouseEnter}
+                  onMouseLeave={handleMouseLeave}
+                  perfectDrawEnabled={false}
                 />
               );
             } else if (isCircle(shape)) {
               return (
-                <Circle
+                <KonvaCircle
                   key={shape.id}
-                  circle={shape}
-                  isSelected={false}
-                  onClick={handleShapeClick}
-                  onDragStart={handleDragStart}
-                  onDragMove={handleRectangleDragMove}
-                  onDragEnd={handleCircleDragEnd}
-                  onTransform={handleShapeTransform}
-                  mode={mode}
+                  x={shape.centerX}
+                  y={shape.centerY}
+                  radius={shape.radius}
+                  fill={shape.fill}
+                  rotation={shape.rotation || 0}
+                  onClick={(e) => handleShapeClick(shape.id, (e.evt as MouseEvent).shiftKey)}
+                  onTap={(e) => handleShapeClick(shape.id, (e.evt as MouseEvent).shiftKey)}
+                  onMouseEnter={handleMouseEnter}
+                  onMouseLeave={handleMouseLeave}
+                  perfectDrawEnabled={false}
                 />
               );
             } else if (isLine(shape)) {
+              const dx = shape.width * Math.cos((shape.rotation * Math.PI) / 180);
+              const dy = shape.width * Math.sin((shape.rotation * Math.PI) / 180);
               return (
-                <Line
+                <KonvaLine
                   key={shape.id}
-                  line={shape}
-                  isSelected={false}
-                  onClick={(id, shiftKey) => handleShapeClick(id, shiftKey)}
-                  onDragStart={handleDragStart}
-                  onDragMove={(id, x, y) => handleRectangleDragMove(id, x, y)}
-                  onTransform={handleShapeTransform}
-                  mode={mode}
+                  points={[shape.x, shape.y, shape.x + dx, shape.y + dy]}
+                  stroke={shape.stroke}
+                  strokeWidth={shape.strokeWidth}
+                  lineCap="round"
+                  lineJoin="round"
+                  onClick={(e) => handleShapeClick(shape.id, (e.evt as MouseEvent).shiftKey)}
+                  onTap={(e) => handleShapeClick(shape.id, (e.evt as MouseEvent).shiftKey)}
+                  onMouseEnter={handleMouseEnter}
+                  onMouseLeave={handleMouseLeave}
+                  perfectDrawEnabled={false}
                 />
               );
             } else if (isText(shape)) {
@@ -1551,20 +1854,25 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
                   text={shape}
                   isSelected={false}
                   onClick={handleTextClick}
-                  onDragStart={handleDragStart}
-                  onDragMove={(id, x, y) => handleRectangleDragMove(id, x, y)}
-                  onDragEnd={(id, x, y) => handleTextDragEnd(id, x, y)}
-                  onTextChange={handleTextChange}
-                  onTransform={handleShapeTransform}
+                  onDragStart={() => {}}
+                  onDragMove={() => {}}
+                  onDragEnd={() => {}}
+                  onTransform={() => {}}
                   mode={mode}
                 />
               );
             }
             return null;
           })}
+        </Layer>
+
+        {/* Objects layer (or dynamic layer in performance mode) */}
+        <Layer ref={dynamicLayerRef}>
+          {/* Unselected shapes are rendered in the static performance layer above */}
+          {null}
 
           {/* Render selected shapes last (transformers will be on top) */}
-          {(performanceMode ? dynamicObjects : objects.filter(shape => selectedIds.includes(shape.id))).map((shape) => {
+          {(dynamicObjects).map((shape) => {
             // Optimize for performance: disable expensive visual features when 2+ shapes selected
             const isMultiSelect = selectedIds.length >= 2;
             const showTransformer = selectedIds.length === 1;
@@ -1603,7 +1911,7 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
                 <Rectangle
                   key={shape.id}
                   rectangle={adjustedShape}
-                  isSelected={showSelectionIndicators}
+                  isSelected={true}
                   isDraggable={true}
                   onClick={handleShapeClick}
                   onDragStart={handleDragStart}
@@ -1612,6 +1920,8 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
                   onTransform={handleShapeTransform}
                   mode={mode}
                   showTransformer={showTransformer}
+                  showSelectionIndicators={showSelectionIndicators}
+                  isMultiSelect={isMultiSelect}
                 />
               );
             } else if (isCircle(adjustedShape)) {
@@ -1619,7 +1929,7 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
                 <Circle
                   key={shape.id}
                   circle={adjustedShape}
-                  isSelected={showSelectionIndicators}
+                  isSelected={true}
                   isDraggable={true}
                   onClick={handleShapeClick}
                   onDragStart={handleDragStart}
@@ -1628,6 +1938,8 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
                   onTransform={handleShapeTransform}
                   mode={mode}
                   showTransformer={showTransformer}
+                  showSelectionIndicators={showSelectionIndicators}
+                  isMultiSelect={isMultiSelect}
                 />
               );
             } else if (isLine(adjustedShape)) {
@@ -1635,7 +1947,7 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
                 <Line
                   key={shape.id}
                   line={adjustedShape}
-                  isSelected={showSelectionIndicators}
+                  isSelected={true}
                   isDraggable={true}
                   onClick={(id, shiftKey) => handleShapeClick(id, shiftKey)}
                   onDragStart={handleDragStart}
@@ -1643,6 +1955,7 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
                   onTransform={handleShapeTransform}
                   mode={mode}
                   showTransformer={showTransformer}
+                  isMultiSelect={isMultiSelect}
                 />
               );
             } else if (isText(adjustedShape)) {
@@ -1650,16 +1963,18 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
                 <Text
                   key={shape.id}
                   text={adjustedShape}
-                  isSelected={showSelectionIndicators}
+                  isSelected={true}
                   isDraggable={true}
                   onClick={handleTextClick}
                   onDragStart={handleDragStart}
                   onDragMove={(id, x, y) => handleRectangleDragMove(id, x, y)}
                   onDragEnd={(id, x, y) => handleTextDragEnd(id, x, y)}
-                  onTextChange={handleTextChange}
                   onTransform={handleShapeTransform}
                   mode={mode}
                   showTransformer={showTransformer}
+                  onEditStart={handleTextEditStart}
+                  showSelectionIndicators={showSelectionIndicators}
+                  isMultiSelect={isMultiSelect}
                 />
               );
             }
@@ -1667,61 +1982,8 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
           })}
 
           {/* Multi-select bounding box indicator (dotted line around all selected shapes) */}
-          {selectedIds.length >= 2 && (() => {
-            const selectedShapes = (performanceMode ? dynamicObjects : objects.filter(shape => selectedIds.includes(shape.id)));
-            
-            if (selectedShapes.length === 0) return null;
-            
-            // Calculate bounding box of all selected shapes
-            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-            
-            selectedShapes.forEach(shape => {
-              let shapeMinX, shapeMinY, shapeMaxX, shapeMaxY;
-              
-              // Apply drag offset if dragging
-              let offsetX = 0, offsetY = 0;
-              if (multiSelectDragOffset && multiSelectDragStart) {
-                const initialPos = multiSelectDragStart.get(shape.id);
-                if (initialPos) {
-                  offsetX = multiSelectDragOffset.x;
-                  offsetY = multiSelectDragOffset.y;
-                }
-              }
-              
-              if (isRectangle(shape)) {
-                shapeMinX = shape.x + offsetX;
-                shapeMinY = shape.y + offsetY;
-                shapeMaxX = shape.x + shape.width + offsetX;
-                shapeMaxY = shape.y + shape.height + offsetY;
-              } else if (isCircle(shape)) {
-                shapeMinX = shape.centerX - shape.radius + offsetX;
-                shapeMinY = shape.centerY - shape.radius + offsetY;
-                shapeMaxX = shape.centerX + shape.radius + offsetX;
-                shapeMaxY = shape.centerY + shape.radius + offsetY;
-              } else if (isLine(shape)) {
-                const rad = (shape.rotation * Math.PI) / 180;
-                const endX = shape.x + shape.width * Math.cos(rad);
-                const endY = shape.y + shape.width * Math.sin(rad);
-                shapeMinX = Math.min(shape.x, endX) + offsetX;
-                shapeMinY = Math.min(shape.y, endY) + offsetY;
-                shapeMaxX = Math.max(shape.x, endX) + offsetX;
-                shapeMaxY = Math.max(shape.y, endY) + offsetY;
-              } else if (isText(shape)) {
-                const textWidth = shape.text.length * shape.fontSize * 0.6;
-                const textHeight = shape.fontSize * 1.2;
-                shapeMinX = shape.x + offsetX;
-                shapeMinY = shape.y + offsetY;
-                shapeMaxX = shape.x + textWidth + offsetX;
-                shapeMaxY = shape.y + textHeight + offsetY;
-              } else {
-                return; // Unknown shape type
-              }
-              
-              minX = Math.min(minX, shapeMinX);
-              minY = Math.min(minY, shapeMinY);
-              maxX = Math.max(maxX, shapeMaxX);
-              maxY = Math.max(maxY, shapeMaxY);
-            });
+          {selectedIds.length >= 2 && multiSelectBounds && (() => {
+            const { minX, minY, maxX, maxY } = multiSelectBounds;
             
             // Add padding around the bounding box (compensate for zoom)
             const padding = 8 / stageScale;
@@ -1823,6 +2085,7 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
               key={poof.id}
               x={poof.x}
               y={poof.y}
+              scale={stageScale}
               onComplete={() => handlePoofComplete(poof.id)}
             />
           ))}
@@ -1844,6 +2107,31 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
         </Layer>
       </Stage>
 
+      {/* Floating AI Assistant button */}
+      {showFloatingAI && floatingAIPosition && (
+        <button
+          onClick={() => {
+            // Dispatch event to open AI Assistant panel with context about selected shapes
+            window.dispatchEvent(new CustomEvent('openAIAssistant', {
+              detail: { selectedShapeIds: selectedIds }
+            }));
+          }}
+          className="fixed z-50 bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-full p-3 shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-110"
+          style={{
+            left: `${floatingAIPosition.x}px`,
+            top: `${floatingAIPosition.y}px`,
+            width: '48px',
+            height: '48px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          title="Ask AI about selected shapes"
+        >
+          <Sparkles size={24} className="text-white" />
+        </button>
+      )}
+
       {/* Canvas info overlay */}
       {showInfo && (
         <div className="absolute bottom-4 left-20 bg-white/90 backdrop-blur-sm px-4 py-2 rounded-lg shadow-lg text-sm z-30">
@@ -1857,13 +2145,49 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
               ({Math.round(stagePos.x)}, {Math.round(stagePos.y)})
             </div>
             <div>
-              <span className="font-semibold">Objects:</span> {objects.length}
+              <span className="font-semibold">Objects:</span>{' '}
+              <span className={`px-2 py-0.5 rounded ${
+                objects.length >= MAX_CANVAS_OBJECTS * 0.9 
+                  ? 'bg-red-100 text-red-700' 
+                  : objects.length >= MAX_CANVAS_OBJECTS * 0.7 
+                  ? 'bg-yellow-100 text-yellow-700' 
+                  : 'bg-gray-100 text-gray-700'
+              }`}>
+                {objects.length}/{MAX_CANVAS_OBJECTS}
+              </span>
             </div>
             {selectedIds.length > 0 && (
-              <div className="text-green-700">
-                <span className="font-semibold">Selected:</span> {selectedIds.length}
-              </div>
+              <>
+                <div className="border-t border-gray-300 mt-1 pt-1">
+                  <div className="text-green-700 font-semibold mb-1">
+                    Selected Objects: {selectedIds.length}
+                  </div>
+                  <div className="text-xs text-gray-700 space-y-0.5">
+                    {(() => {
+                      const selectedShapes = objects.filter(obj => selectedIds.includes(obj.id));
+                      const shapeTypeCounts: Record<string, number> = {};
+                      selectedShapes.forEach(shape => {
+                        shapeTypeCounts[shape.type] = (shapeTypeCounts[shape.type] || 0) + 1;
+                      });
+                      return Object.entries(shapeTypeCounts).map(([type, count]) => (
+                        <div key={type}>
+                          {count} {type}{count > 1 ? 's' : ''}
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                </div>
+              </>
             )}
+            <div className="border-t border-gray-300 mt-1 pt-1">
+              <span className="font-semibold text-xs">Viewport Bounds:</span>
+              <div className="text-xs text-gray-700 font-mono mt-0.5">
+                x: {Math.round((-stagePos.x) / stageScale)} → {Math.round((-stagePos.x + window.innerWidth) / stageScale)}
+              </div>
+              <div className="text-xs text-gray-700 font-mono">
+                y: {Math.round((-stagePos.y) / stageScale)} → {Math.round((-stagePos.y + window.innerHeight) / stageScale)}
+              </div>
+            </div>
             <div>
               <span className="font-semibold">Mode:</span>{' '}
               {mode === 'pan' ? '✋ Pan' : mode === 'select' ? '🔲 Multi-Select' : mode === 'rectangle' ? '⬛ Rectangle' : mode === 'circle' ? '⭕ Circle' : mode === 'line' ? '➖ Line' : mode === 'text' ? '📝 Text' : mode}

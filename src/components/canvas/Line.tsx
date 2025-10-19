@@ -13,19 +13,10 @@ interface LineProps {
   onTransform?: (id: string, updates: Partial<LineType>) => void;
   mode: CanvasMode;
   showTransformer?: boolean;
+  isMultiSelect?: boolean;
 }
 
-export const Line = memo(function Line({ 
-  line, 
-  isSelected,
-  isDraggable,
-  onClick, 
-  onDragStart,
-  onDragMove,
-  onTransform, 
-  mode,
-  showTransformer = true
-}: LineProps) {
+export const Line = memo(function Line({ line, isSelected, isDraggable, onClick, onDragStart, onDragMove, onTransform, mode, showTransformer = true, isMultiSelect = false }: LineProps) {
   const lineRef = useRef<Konva.Line>(null);
   const [isHovered, setIsHovered] = useState(false);
   const [isDraggingEndpoint, setIsDraggingEndpoint] = useState(false);
@@ -168,7 +159,12 @@ export const Line = memo(function Line({
         strokeWidth={line.strokeWidth}
         hitStrokeWidth={Math.max(line.strokeWidth + 8, 12)}
         rotation={line.rotation || 0}
-        opacity={isSelected ? 0.7 : 1}
+        opacity={isSelected ? 0.75 : 1}
+        shadowColor={!isMultiSelect && (isSelected || isHovered) ? 'black' : undefined}
+        shadowBlur={isMultiSelect ? 0 : isSelected ? 10 : isHovered ? 6 : 0}
+        shadowOpacity={isMultiSelect ? 0 : isSelected ? 0.3 : isHovered ? 0.2 : 0}
+        shadowOffsetX={isMultiSelect ? 0 : isHovered ? 2 : 0}
+        shadowOffsetY={isMultiSelect ? 0 : isHovered ? 2 : 0}
         lineCap="round"
         lineJoin="round"
         draggable={(isDraggable !== undefined ? isDraggable : isSelected) && !isDraggingEndpoint}
@@ -179,11 +175,6 @@ export const Line = memo(function Line({
         onDragEnd={handleDragEnd}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
-        shadowColor={isSelected || isHovered ? 'black' : undefined}
-        shadowBlur={isSelected ? 10 : isHovered ? 6 : 0}
-        shadowOpacity={isSelected ? 0.3 : isHovered ? 0.2 : 0}
-        shadowOffsetX={isHovered ? 2 : 0}
-        shadowOffsetY={isHovered ? 2 : 0}
       />
       
       {/* Custom endpoint handles */}

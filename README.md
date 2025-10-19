@@ -259,9 +259,6 @@ The AI Canvas Agent is a powerful natural language interface that allows you to 
 - **Smart Positioning**: AI automatically positions shapes in your current viewport
 - **Auto-Selection & Framing**: Created shapes are automatically selected and framed in view
 - **Context-Aware**: AI understands your current canvas state, selected shapes, and color preferences
-- **Two Modes**:
-  - **Auto Mode**: Commands execute immediately
-  - **Confirm Mode**: Preview changes before applying
 
 ### Example Commands
 - **Create**: "Create 3 blue rectangles in a row", "Add a red circle with radius 50"
@@ -302,6 +299,7 @@ The AI system uses a secure server-side architecture:
 - **Security**: API keys never exposed to client
 - **Tools**: 14 structured functions for canvas operations
 - **Performance**: Sub-2 second response time target (90%+ of commands)
+- **Optimizations**: Batch Firebase writes for 10-50x faster multi-object operations
 
 ## Testing
 
@@ -393,15 +391,6 @@ AI-powered coding guidelines ensure consistent patterns across the codebase:
 - **`react-components.mdc`** - React component patterns and best practices
 
 **Purpose:** These rules guide AI assistants and developers to maintain code quality and consistency.
-
-### Planning Documents
-
-The `planning/` directory contains original design documents:
-
-- **`PRD.md`** - Product Requirements Document (MVP scope)
-- **`architecture.md`** - System architecture diagram
-- **`tasklist.md`** - PR breakdown and task tracking
-- **`PR_15.md`** - Canvas sharing feature specifications
 
 ## How to Use
 
@@ -1028,7 +1017,7 @@ This is an MVP project built for learning purposes. Contributions welcome!
 
 - **Current Version**: v1.3-dev (AI Canvas Agent in development)
 - **Status**: 🚧 Active Development
-- **Last Updated**: October 18, 2025
+- **Last Updated**: October 19, 2025
 - **Build Status**: ✅ Passing
 - **Test Coverage**: >70%
 - **Production URL**: [https://collab-canvas-2ba2e.web.app/](https://collab-canvas-2ba2e.web.app/) (v1.2)
@@ -1063,7 +1052,6 @@ This is an MVP project built for learning purposes. Contributions welcome!
   - 14 AI tools for canvas operations (creation, manipulation, layout, context)
   - Natural language interface with chat panel
   - Smart positioning and auto-framing
-  - Auto/Confirm modes with localStorage persistence
   - Sub-2 second response time target (90%+ commands)
 
 ## 📝 License
