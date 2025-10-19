@@ -38,9 +38,7 @@
 #### What's Being Built
 1. **AI Assistant UI** ✅ (Task 2.0 Complete)
    - Floating chat panel with draggable positioning
-   - AI mode toggle (Auto vs Confirm modes)
    - Information modal with categorized examples
-   - Confirmation panel for confirm mode
    - Click-to-copy example commands
 
 2. **Firebase Cloud Functions Backend** ✅ (Task 1.0 Complete)
@@ -61,13 +59,7 @@
    - Focal point calculation for smart positioning
    - Auto-selection of affected shapes
 
-4. **AI Mode System** (Task 5.0 - To Do)
-   - Auto mode: Execute commands immediately
-   - Confirm mode: Show preview, require approval
-   - LocalStorage persistence for mode preference
-   - Mode toggle component
-
-5. **Performance Testing** ⚡ (Task 6.0 - Critical for Rubric)
+4. **Performance Testing** ⚡ (Task 6.0 - Critical for Rubric)
    - Sub-2 second response time (90%+ of commands)
    - 90%+ command success rate
    - Real-time sync <100ms verification
@@ -97,10 +89,9 @@
 
 #### Next Steps
 1. Test full AI workflow locally with real API key
-2. Implement AI mode toggle (Auto/Confirm)
-3. Test complex commands (login form, nav bar, grids)
-4. Performance testing (sub-2s response time)
-5. Document test results for rubric compliance
+2. Test complex commands (login form, nav bar, grids)
+3. Performance testing (sub-2s response time)
+4. Document test results for rubric compliance
 
 ### Completed: Multi-Select & Transform Operations (Priority #2)
 **Completed**: October 16, 2025  
@@ -350,17 +341,15 @@ Working on implementing natural language interface for canvas operations using O
 
 **Immediate Priorities**:
 1. Complete Task 3.22: Test full AI workflow with real OpenAI API key
-2. Implement Task 5.0: AI mode toggle (Auto/Confirm modes)
-3. Complete Task 6.0: Performance testing (sub-2s response, 90%+ success rate)
+2. Complete Task 6.0: Performance testing (sub-2s response, 90%+ success rate)
 
 ## Next Steps
 **Current Phase** (AI Canvas Agent):
 1. ✅ Task 1.0: Firebase Cloud Functions setup with emulators
-2. ✅ Task 2.0: UI components (chat panel, modals, toggle)
+2. ✅ Task 2.0: UI components (chat panel, modals)
 3. ✅ Task 3.0: Cloud Function backend with OpenAI (mostly complete, needs testing)
 4. ✅ Task 4.0: All 14 AI tools implemented
-5. ⏳ Task 5.0: AI mode toggle with localStorage - Next Up
-6. ⏳ Task 6.0: Performance testing and rubric compliance - Critical
+5. ⏳ Task 6.0: Performance testing and rubric compliance - Critical
 
 **After AI Canvas Agent**:
 1. **Undo/Redo** - Implement command pattern for operation history
@@ -402,18 +391,15 @@ Working on implementing natural language interface for canvas operations using O
 26. **Tool Count**: 14 tools across 4 categories (creation, manipulation, layout, context) ✅
 27. **Response Time Target**: <2 seconds for 90%+ of commands (rubric requirement) ⚡
 28. **Success Rate Target**: 90%+ command success rate (rubric requirement) ⚡
-29. **AI Modes**: Auto mode (immediate execution) and Confirm mode (preview first) ✅
-30. **Mode Persistence**: LocalStorage with key 'ai-mode-preference' ✅
-31. **Smart Positioning**: Use viewport center (focal point) for shape placement ✅
+29. **Smart Positioning**: Use viewport center (focal point) for shape placement ✅
 32. **Auto-Selection**: AI-created/modified shapes automatically selected after execution ✅
 33. **Color Defaults**: AI uses currently selected color and stroke width from toolbar ✅
 34. **View Management**: Auto-frame AI-generated shapes with smooth animation ✅
 
 ### Open Questions
 **AI Canvas Agent**:
-1. Should confirmation mode show visual preview or text summary? (Decision: Text summary for MVP)
-2. Should AI have access to command history for context? (Decision: Out of scope for MVP)
-3. Rate limiting: 10 requests/minute sufficient? (Decision: Test and tune during Phase 5)
+1. Should AI have access to command history for context? (Decision: Out of scope for MVP)
+2. Rate limiting: 10 requests/minute sufficient? (Decision: Test and tune during testing phase)
 
 ## Known Issues
 None reported. Application is stable.

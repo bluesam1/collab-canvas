@@ -1052,7 +1052,6 @@ This is an MVP project built for learning purposes. Contributions welcome!
   - 14 AI tools for canvas operations (creation, manipulation, layout, context)
   - Natural language interface with chat panel
   - Smart positioning and auto-framing
-  - Auto/Confirm modes with localStorage persistence
   - Sub-2 second response time target (90%+ commands)
 
 ## 📝 License

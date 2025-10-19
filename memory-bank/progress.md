@@ -50,11 +50,6 @@
 
 ### ⏳ To Do
 - [ ] **Task 3.22**: Test full AI workflow with real OpenAI API key
-- [ ] **Task 5.0**: AI mode toggle with localStorage persistence
-  - Create AIModeToggle component
-  - Implement Auto mode (immediate execution)
-  - Implement Confirm mode (preview and approval)
-  - Save preference to localStorage
 - [ ] **Task 6.0**: Performance testing and rubric compliance (CRITICAL ⚡)
   - Test 20+ diverse commands
   - Verify 90%+ complete in <2 seconds
