@@ -25,12 +25,12 @@ export interface AuthContextType {
   signInWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   clearError: () => void;
-  changeUserColor?: (color: string) => void;
+  changeUserColor?: (color: string) => Promise<void>;
   availableColors?: string[];
 }
 
 // Canvas types
-export type CanvasMode = 'pan' | 'select' | 'rectangle' | 'circle' | 'line' | 'text';
+export type CanvasMode = 'pan' | 'select' | 'lasso' | 'rectangle' | 'circle' | 'line' | 'text';
 export type ShapeType = 'rectangle' | 'circle' | 'line' | 'text';
 
 export interface Canvas {
@@ -59,6 +59,7 @@ export interface Rectangle {
   createdBy: string;
   createdAt: number;
   updatedAt: number;
+  updatedBy?: string; // User ID of last person who modified this object (optional for backward compatibility)
 }
 
 export interface Circle {
@@ -72,6 +73,7 @@ export interface Circle {
   createdBy: string;
   createdAt: number;
   updatedAt: number;
+  updatedBy?: string; // User ID of last person who modified this object (optional for backward compatibility)
 }
 
 export interface Line {
@@ -87,6 +89,7 @@ export interface Line {
   createdBy: string;
   createdAt: number;
   updatedAt: number;
+  updatedBy?: string; // User ID of last person who modified this object (optional for backward compatibility)
 }
 
 export interface Text {
@@ -104,6 +107,7 @@ export interface Text {
   createdBy: string;
   createdAt: number;
   updatedAt: number;
+  updatedBy?: string; // User ID of last person who modified this object (optional for backward compatibility)
 }
 
 // Union type for all shapes
@@ -139,6 +143,22 @@ export interface PresenceState {
   cursors: Map<string, CursorPosition>;
 }
 
+// Connection state types
+export type ConnectionStatus = 'connected' | 'disconnected' | 'reconnecting';
+
+export interface ConnectionState {
+  status: ConnectionStatus;
+  reconnectAttempts: number;
+  lastConnected: number | null;
+  lastDisconnected: number | null;
+  isConnected: boolean; // Convenience boolean
+}
+
+export interface ConnectionContextType {
+  connectionState: ConnectionState;
+  manualReconnect: () => void;
+}
+
 // Undo types
 export type UndoOperationType = 'create' | 'delete' | 'modify';
 
@@ -166,6 +186,10 @@ export interface CanvasContextType {
   selectMultiple: (ids: string[]) => void;
   clearSelection: () => void;
   deleteSelected: () => void;
+  handleCopy: () => void;
+  handlePaste: (viewportCenter?: { x: number; y: number }) => Promise<void>;
+  handleCut: () => Promise<void>;
+  handleDuplicate: () => Promise<void>;
   undo: () => void;
   redo: () => void;
   redoState: UndoState | null;
@@ -179,6 +203,25 @@ export interface PresenceContextType {
   onlineUsers: Map<string, PresenceUser>;
   cursors: Map<string, CursorPosition>;
   updateCursor: (position: { x: number; y: number }) => void;
+}
+
+// Notification types
+export type NotificationType = 'user-join' | 'user-leave' | 'object-created' | 'object-deleted' | 'object-modified';
+
+export interface Notification {
+  id: string;
+  type: NotificationType;
+  userEmail: string;
+  userColor: string;
+  message: string;
+  timestamp: number;
+  shapeType?: ShapeType; // For object-created notifications
+}
+
+export interface NotificationContextType {
+  notifications: Notification[];
+  addNotification: (notification: Omit<Notification, 'id' | 'timestamp'>) => void;
+  dismissNotification: (id: string) => void;
 }
 
 // Type guards for shape type validation

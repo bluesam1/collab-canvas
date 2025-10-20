@@ -49,11 +49,18 @@ export const Text = memo(function Text({
 
   // Attach transformer to selected text
   useEffect(() => {
-    if (isSelected && textRef.current && transformerRef.current) {
-      transformerRef.current.nodes([textRef.current]);
-      transformerRef.current.getLayer()?.batchDraw();
+    const transformer = transformerRef.current;
+    const textNode = textRef.current;
+    
+    if (isSelected && showTransformer && textNode && transformer) {
+      transformer.nodes([textNode]);
+      transformer.getLayer()?.batchDraw();
+    } else if (transformer) {
+      // Clear transformer nodes when not showing
+      transformer.nodes([]);
+      transformer.getLayer()?.batchDraw();
     }
-  }, [isSelected]);
+  }, [isSelected, showTransformer]);
 
   // Handle transform start - capture initial center
   const handleTransformStart = () => {
@@ -252,6 +259,7 @@ export const Text = memo(function Text({
       <KonvaText
         ref={textRef}
         id={text.id}
+        name={text.id}
         x={text.x + textWidth / 2}
         y={text.y + textHeight / 2}
         text={text.text}
@@ -288,6 +296,7 @@ export const Text = memo(function Text({
       {isSelected && (
         <Transformer
           ref={transformerRef}
+          visible={showTransformer}
           borderEnabled={showTransformer}
           borderStroke="#3B82F6"
           borderStrokeWidth={2}

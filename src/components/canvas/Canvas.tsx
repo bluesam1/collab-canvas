@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, useContext, useCallback, useMemo } from 'react';
-import { Stage, Layer, Line as KonvaLine, Rect, Circle as KonvaCircle } from 'react-konva';
+import { Stage, Layer, Line as KonvaLine, Rect, Circle as KonvaCircle, Transformer } from 'react-konva';
 import Konva from 'konva';
 import { Rectangle } from './Rectangle';
 import { Circle } from './Circle';
@@ -14,8 +14,10 @@ import { useCanvas } from '../../hooks/useCanvas';
 import { usePresence } from '../../hooks/usePresence';
 import { UserContext } from '../../contexts/UserContext';
 import { useFrameShapes } from '../../hooks/useFrameShapes';
+import { useToast } from '../../hooks/useToast';
 import { Sparkles } from 'lucide-react';
 import { MAX_CANVAS_OBJECTS } from '../../constants/canvas';
+import { isPointInPolygon } from '../../utils/canvasHelpers';
 
 // Canvas configuration
 const CANVAS_WIDTH = 5000;
@@ -62,8 +64,10 @@ const measureText = (text: string, fontSize: number): { width: number; height: n
 
 export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesReady, onViewportChange, onDeleteWithEffectReady, onZoomControlReady }: CanvasProps) {
   const stageRef = useRef<Konva.Stage>(null);
+  const gridLayerRef = useRef<Konva.Layer>(null); // Grid layer
   const staticLayerRef = useRef<Konva.Layer>(null); // For performance mode caching (unselected shapes)
   const dynamicLayerRef = useRef<Konva.Layer>(null); // For caching selected shapes (when not dragging)
+  const multiSelectTransformerRef = useRef<Konva.Transformer>(null); // Multi-select transformer
   const [stageSize, setStageSize] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
   const [stageScale, setStageScale] = useState(1);
@@ -86,8 +90,8 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
   const [selectionBoxStart, setSelectionBoxStart] = useState<{ x: number; y: number } | null>(null);
   const [selectionBoxEnd, setSelectionBoxEnd] = useState<{ x: number; y: number } | null>(null);
 
-  // Multi-select bounding box animation
-  const [dashOffset, setDashOffset] = useState(0);
+  // Lasso selection state
+  const [lassoPath, setLassoPath] = useState<{ x: number; y: number }[]>([]);
 
   // Text modal state
   const [isTextModalOpen, setIsTextModalOpen] = useState(false);
@@ -112,6 +116,7 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
   const { objects, selectedIds, isLoading, mode, setMode, createObject, updateObject, selectObject, selectMultiple, clearSelection, deleteSelected, undo, redo, captureUndoSnapshot, setDisableUndoCapture } = useCanvas();
   const { cursors, updateCursor } = usePresence();
   const authContext = useContext(UserContext);
+  const { showSuccess, showError } = useToast();
 
   // Zoom control functions
   const zoomIn = useCallback(() => {
@@ -290,145 +295,6 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
     return objects.filter(obj => selectedIds.includes(obj.id));
   }, [objects, selectedIds]);
 
-  // Memoized bounding box calculation for multi-select
-  // Only recalculate when shapes or drag offset changes, NOT on dashOffset animation frames
-  // Uses optimized AABB calculation for large selections (30+ shapes) for better performance
-  const multiSelectBounds = useMemo(() => {
-    if (selectedIds.length < 2) return null;
-
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    
-    // For large selections, use simplified AABB calculation (much faster)
-    const useSimplifiedBounds = selectedIds.length > 10;
-
-    dynamicObjects.forEach(shape => {
-      let shapeMinX, shapeMinY, shapeMaxX, shapeMaxY;
-
-      // Apply drag offset if dragging
-      let offsetX = 0, offsetY = 0;
-      if (multiSelectDragOffset && multiSelectDragStart) {
-        const initialPos = multiSelectDragStart.get(shape.id);
-        if (initialPos) {
-          offsetX = multiSelectDragOffset.x;
-          offsetY = multiSelectDragOffset.y;
-        }
-      }
-
-      if (isRectangle(shape)) {
-        if (useSimplifiedBounds || shape.rotation === 0) {
-          // Fast path: Simple AABB for non-rotated or large selections
-          shapeMinX = shape.x + offsetX;
-          shapeMinY = shape.y + offsetY;
-          shapeMaxX = shape.x + shape.width + offsetX;
-          shapeMaxY = shape.y + shape.height + offsetY;
-        } else {
-          // Precise path: Calculate bounding box for rotated rectangle (only for small selections)
-          const rad = (shape.rotation * Math.PI) / 180;
-          const cos = Math.cos(rad);
-          const sin = Math.sin(rad);
-          
-          // Get the four corners of the rectangle
-          const corners = [
-            { x: shape.x, y: shape.y },
-            { x: shape.x + shape.width, y: shape.y },
-            { x: shape.x + shape.width, y: shape.y + shape.height },
-            { x: shape.x, y: shape.y + shape.height }
-          ];
-          
-          // Rotate each corner around the rectangle's center
-          const centerX = shape.x + shape.width / 2;
-          const centerY = shape.y + shape.height / 2;
-          
-          const rotatedCorners = corners.map(corner => {
-            const dx = corner.x - centerX;
-            const dy = corner.y - centerY;
-            return {
-              x: centerX + dx * cos - dy * sin,
-              y: centerY + dx * sin + dy * cos
-            };
-          });
-          
-          // Find min/max of rotated corners
-          const xs = rotatedCorners.map(c => c.x);
-          const ys = rotatedCorners.map(c => c.y);
-          shapeMinX = Math.min(...xs) + offsetX;
-          shapeMinY = Math.min(...ys) + offsetY;
-          shapeMaxX = Math.max(...xs) + offsetX;
-          shapeMaxY = Math.max(...ys) + offsetY;
-        }
-      } else if (isCircle(shape)) {
-        shapeMinX = shape.centerX - shape.radius + offsetX;
-        shapeMinY = shape.centerY - shape.radius + offsetY;
-        shapeMaxX = shape.centerX + shape.radius + offsetX;
-        shapeMaxY = shape.centerY + shape.radius + offsetY;
-      } else if (isLine(shape)) {
-        const rad = (shape.rotation * Math.PI) / 180;
-        const endX = shape.x + shape.width * Math.cos(rad);
-        const endY = shape.y + shape.width * Math.sin(rad);
-        shapeMinX = Math.min(shape.x, endX) + offsetX;
-        shapeMinY = Math.min(shape.y, endY) + offsetY;
-        shapeMaxX = Math.max(shape.x, endX) + offsetX;
-        shapeMaxY = Math.max(shape.y, endY) + offsetY;
-      } else if (isText(shape)) {
-        // Calculate accurate text dimensions
-        const fontSize = shape.fontSize || 16;
-        const text = shape.text || '';
-        const { width: textWidth, height: textHeight } = measureText(text, fontSize);
-        
-        if (useSimplifiedBounds || shape.rotation === 0) {
-          // Fast path: Simple AABB for non-rotated or large selections
-          shapeMinX = shape.x + offsetX;
-          shapeMinY = shape.y + offsetY;
-          shapeMaxX = shape.x + textWidth + offsetX;
-          shapeMaxY = shape.y + textHeight + offsetY;
-        } else {
-          // Precise path: Calculate bounding box for rotated text (only for small selections)
-          const rad = (shape.rotation * Math.PI) / 180;
-          const cos = Math.cos(rad);
-          const sin = Math.sin(rad);
-          
-          // Get the four corners of the text bounding box
-          const corners = [
-            { x: shape.x, y: shape.y },
-            { x: shape.x + textWidth, y: shape.y },
-            { x: shape.x + textWidth, y: shape.y + textHeight },
-            { x: shape.x, y: shape.y + textHeight }
-          ];
-          
-          // Rotate each corner around the text's center
-          const centerX = shape.x + textWidth / 2;
-          const centerY = shape.y + textHeight / 2;
-          
-          const rotatedCorners = corners.map(corner => {
-            const dx = corner.x - centerX;
-            const dy = corner.y - centerY;
-            return {
-              x: centerX + dx * cos - dy * sin,
-              y: centerY + dx * sin + dy * cos
-            };
-          });
-          
-          // Find min/max of rotated corners
-          const xs = rotatedCorners.map(c => c.x);
-          const ys = rotatedCorners.map(c => c.y);
-          shapeMinX = Math.min(...xs) + offsetX;
-          shapeMinY = Math.min(...ys) + offsetY;
-          shapeMaxX = Math.max(...xs) + offsetX;
-          shapeMaxY = Math.max(...ys) + offsetY;
-        }
-      } else {
-        return; // Unknown shape type
-      }
-
-      minX = Math.min(minX, shapeMinX);
-      minY = Math.min(minY, shapeMinY);
-      maxX = Math.max(maxX, shapeMaxX);
-      maxY = Math.max(maxY, shapeMaxY);
-    });
-
-    return { minX, minY, maxX, maxY };
-  }, [dynamicObjects, multiSelectDragOffset, multiSelectDragStart]);
-
   // Performance mode: cache static layer (throttled to avoid constant recaching)
   useEffect(() => {
     if (staticLayerRef.current && staticObjects.length > 0) {
@@ -444,40 +310,17 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
     }
   }, [staticObjects]);
 
-  // Performance mode: cache dynamic layer when many shapes selected and not actively dragging
-  // This significantly improves performance for large multi-selections
+  // Performance mode: DISABLED - layer caching breaks transformers
+  // Caching converts the layer to a bitmap, preventing transformers from accessing individual nodes
+  // This caused transform controls to appear in wrong position after ~100ms delay
   useEffect(() => {
     const dynamicLayer = dynamicLayerRef.current;
     if (!dynamicLayer) return;
 
-    // Cache if: 20+ shapes selected AND not dragging AND not panning
-    const shouldCache = selectedIds.length >= 20 && !multiSelectDragStart && !isPanning;
-    
-    if (shouldCache) {
-      // Throttle caching to avoid re-caching on every frame
-      const timer = setTimeout(() => {
-        dynamicLayer.cache();
-        dynamicLayer.batchDraw();
-      }, 100);
-      
-      return () => clearTimeout(timer);
-    } else {
-      // Clear cache when dragging, panning, or small selection
-      dynamicLayer.clearCache();
-      dynamicLayer.batchDraw();
-    }
+    // Always clear cache to ensure transformers work correctly
+    dynamicLayer.clearCache();
+    dynamicLayer.batchDraw();
   }, [selectedIds.length, multiSelectDragStart, isPanning, dynamicObjects]);
-
-  // Animate multi-select bounding box (marching ants effect)
-  useEffect(() => {
-    if (selectedIds.length < 2) return;
-
-    const animationInterval = setInterval(() => {
-      setDashOffset((prev) => (prev + 1) % 12); // Animate dash offset (12 = dash + gap)
-    }, 50); // Update every 50ms for smooth animation
-
-    return () => clearInterval(animationInterval);
-  }, [selectedIds.length]);
 
   // Calculate floating AI button position based on selected shapes
   useEffect(() => {
@@ -550,6 +393,37 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
     setFloatingAIPosition({ x: buttonX, y: buttonY });
     setShowFloatingAI(true);
   }, [selectedIds, objects, stageScale, stagePos]);
+
+  // Update multi-select transformer nodes when selection changes
+  useEffect(() => {
+    const transformer = multiSelectTransformerRef.current;
+    const layer = dynamicLayerRef.current;
+    
+    if (!transformer || !layer || selectedIds.length < 2) {
+      // Clear transformer if less than 2 shapes selected
+      if (transformer) {
+        transformer.nodes([]);
+        transformer.getLayer()?.batchDraw();
+      }
+      return;
+    }
+
+    // Find all selected shape nodes in the layer by their name (which is set to shape.id)
+    const selectedNodes: Konva.Node[] = [];
+    
+    selectedIds.forEach(shapeId => {
+      const node = layer.findOne(`#${shapeId}`);
+      if (node) {
+        selectedNodes.push(node);
+      }
+    });
+
+    // Attach nodes to transformer
+    if (selectedNodes.length > 0) {
+      transformer.nodes(selectedNodes);
+      transformer.getLayer()?.batchDraw();
+    }
+  }, [selectedIds]);
 
   // Memoized callback to update transform (prevents frameShapes from recreating)
   const updateTransform = useCallback((position: { x: number; y: number }, scale: number) => {
@@ -823,11 +697,61 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
       }
 
       if (e.key === 'Escape') {
-        clearSelection();
+        // Cancel lasso if active, otherwise clear selection
+        if (lassoPath.length > 0) {
+          setLassoPath([]);
+        } else {
+          clearSelection();
+        }
       } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.length > 0) {
         // Delete all selected shapes with poof effect
         e.preventDefault(); // Prevent browser back navigation on Backspace
         handleDeleteSelected();
+      } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) && selectedIds.length > 0) {
+        // Nudge selected shapes 5px in the arrow direction
+        e.preventDefault(); // Prevent page scrolling
+        
+        const nudgeDistance = 5;
+        let deltaX = 0;
+        let deltaY = 0;
+        
+        if (e.key === 'ArrowUp') deltaY = -nudgeDistance;
+        else if (e.key === 'ArrowDown') deltaY = nudgeDistance;
+        else if (e.key === 'ArrowLeft') deltaX = -nudgeDistance;
+        else if (e.key === 'ArrowRight') deltaX = nudgeDistance;
+        
+        // Capture undo snapshot before nudging
+        captureUndoSnapshot('modify', selectedIds);
+        
+        // Batch update all selected shapes
+        const updates: { [id: string]: Partial<Shape> } = {};
+        
+        selectedIds.forEach(id => {
+          const shape = objects.find(obj => obj.id === id);
+          if (!shape) return;
+          
+          if (isRectangle(shape) || isText(shape)) {
+            updates[id] = {
+              x: shape.x + deltaX,
+              y: shape.y + deltaY,
+            };
+          } else if (isCircle(shape)) {
+            updates[id] = {
+              centerX: shape.centerX + deltaX,
+              centerY: shape.centerY + deltaY,
+            };
+          } else if (isLine(shape)) {
+            updates[id] = {
+              x: shape.x + deltaX,
+              y: shape.y + deltaY,
+            };
+          }
+        });
+        
+        // Apply updates optimistically and to Firebase
+        Object.entries(updates).forEach(([id, update]) => {
+          updateObject(id, update);
+        });
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
         // Ctrl/Cmd + A: Select all shapes
         e.preventDefault();
@@ -839,9 +763,21 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
       } else if (e.key.toLowerCase() === 's') {
         // Switch to Select mode
         setMode('select');
+      } else if (e.key.toLowerCase() === 'l') {
+        // Switch to Lasso mode
+        setMode('lasso');
       } else if (e.key.toLowerCase() === 'r') {
         // Switch to Rectangle mode
         setMode('rectangle');
+      } else if (e.key.toLowerCase() === 'c') {
+        // Switch to Circle mode
+        setMode('circle');
+      } else if (e.key.toLowerCase() === 't') {
+        // Switch to Text mode
+        setMode('text');
+      } else if (e.key === '/') {
+        // Switch to Line mode
+        setMode('line');
       }
     };
 
@@ -874,6 +810,64 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
     window.addEventListener('frame-shapes', handleFrameShapes as EventListener);
     return () => window.removeEventListener('frame-shapes', handleFrameShapes as EventListener);
   }, [frameShapes]);
+
+  // Listen for export-canvas event
+  useEffect(() => {
+    const handleExport = () => {
+      if (!stageRef.current) return;
+
+      try {
+        const stage = stageRef.current;
+        const gridLayer = gridLayerRef.current;
+        
+        // Hide grid layer before export
+        const wasGridVisible = gridLayer?.visible() ?? true;
+        if (gridLayer) {
+          gridLayer.visible(false);
+        }
+        
+        // Force stage to redraw all layers
+        stage.batchDraw();
+
+        // Generate PNG data URL with high quality settings
+        const dataURL = stage.toDataURL({
+          pixelRatio: 2, // High quality (Retina)
+          mimeType: 'image/png',
+          quality: 1, // Maximum quality
+        });
+
+        // Restore grid layer visibility
+        if (gridLayer) {
+          gridLayer.visible(wasGridVisible);
+          stage.batchDraw(); // Redraw stage to show grid again
+        }
+
+        // Create download link
+        const link = document.createElement('a');
+        link.download = `CollabCanvas_${Date.now()}.png`;
+        link.href = dataURL;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        // Show success toast
+        showSuccess('Canvas exported successfully');
+      } catch (error) {
+        console.error('Export failed:', error);
+        showError('Export failed. Canvas may be too large.');
+        
+        // Make sure to restore grid visibility even on error
+        const gridLayer = gridLayerRef.current;
+        if (gridLayer && stageRef.current) {
+          gridLayer.visible(true);
+          stageRef.current.batchDraw();
+        }
+      }
+    };
+
+    window.addEventListener('export-canvas', handleExport);
+    return () => window.removeEventListener('export-canvas', handleExport);
+  }, [showSuccess, showError]);
 
   // Handle mouse down for panning or rectangle creation
   const handleMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
@@ -921,6 +915,9 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
             // Select mode: Start selection box only on empty space
             setSelectionBoxStart(worldPos);
             setSelectionBoxEnd(worldPos);
+          } else if (mode === 'lasso' && clickedOnEmpty) {
+            // Lasso mode: Start lasso path only on empty space
+            setLassoPath([worldPos]);
           } else if (mode === 'pan' && clickedOnEmpty) {
             // Pan mode: Start panning only on empty space
             setIsPanning(true);
@@ -996,6 +993,16 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
           // Convert screen coordinates to world coordinates
           const worldPos = screenToWorld(pos.x, pos.y);
           setSelectionBoxEnd(worldPos);
+        }
+      }
+    } else if (lassoPath.length > 0 && mode === 'lasso') {
+      // Append point to lasso path
+      if (stage) {
+        const pos = stage.getPointerPosition();
+        if (pos) {
+          // Convert screen coordinates to world coordinates
+          const worldPos = screenToWorld(pos.x, pos.y);
+          setLassoPath(prev => [...prev, worldPos]);
         }
       }
     }
@@ -1188,13 +1195,33 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
       // Reset selection box
       setSelectionBoxStart(null);
       setSelectionBoxEnd(null);
+    } else if (lassoPath.length >= 3) {
+      // Lasso selection: Select all shapes whose center is within the lasso path
+      const selectedShapeIds: string[] = [];
+      
+      objects.forEach((shape) => {
+        const center = getShapeCenter(shape);
+        if (isPointInPolygon(center, lassoPath)) {
+          selectedShapeIds.push(shape.id);
+        }
+      });
+      
+      // Select the shapes
+      if (selectedShapeIds.length > 0) {
+        selectMultiple(selectedShapeIds);
+      }
+      
+      // Reset lasso path and auto-exit to pan mode
+      setLassoPath([]);
+      setMode('pan');
     } else {
-      // If no drag occurred, just reset
+      // If no drag occurred or lasso has < 3 points, just reset
       setIsCreating(false);
       setNewShapeStart(null);
       setNewShapeEnd(null);
       setSelectionBoxStart(null);
       setSelectionBoxEnd(null);
+      setLassoPath([]);
     }
   };
 
@@ -1581,6 +1608,119 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
     }
   };
 
+  // Handle multi-select transformer transform end (scaling multiple shapes together)
+  const handleMultiSelectTransformEnd = () => {
+    const transformer = multiSelectTransformerRef.current;
+    const layer = dynamicLayerRef.current;
+    
+    if (!transformer || !layer || selectedIds.length < 2) return;
+
+    // Capture undo snapshot before making changes
+    captureUndoSnapshot('modify', selectedIds);
+    
+    // Disable auto-capture during batch update
+    setDisableUndoCapture(true);
+
+    // Apply scale to all selected shapes
+    selectedIds.forEach(shapeId => {
+      const shape = objects.find(obj => obj.id === shapeId);
+      if (!shape) return;
+
+      const node = layer.findOne(`#${shapeId}`) as Konva.Node;
+      if (!node) return;
+
+      // Get the node's individual scale (applied by transformer to each node)
+      const nodeScaleX = node.scaleX();
+      const nodeScaleY = node.scaleY();
+
+      // Get the node's current position
+      const currentX = node.x();
+      const currentY = node.y();
+
+      // Apply scale to shape dimensions and update position
+      if (isRectangle(shape)) {
+        const newWidth = Math.max(5, shape.width * nodeScaleX);
+        const newHeight = Math.max(5, shape.height * nodeScaleY);
+        
+        // Convert from center position back to top-left
+        const topLeftX = currentX - newWidth / 2;
+        const topLeftY = currentY - newHeight / 2;
+        
+        updateObject(shapeId, {
+          x: topLeftX,
+          y: topLeftY,
+          width: newWidth,
+          height: newHeight,
+        });
+        
+        // Reset node scale
+        node.scaleX(1);
+        node.scaleY(1);
+      } else if (isCircle(shape)) {
+        // For circles, scaleX and scaleY should be the same due to keepRatio
+        const newRadius = Math.max(2.5, shape.radius * nodeScaleX);
+        
+        updateObject(shapeId, {
+          centerX: currentX,
+          centerY: currentY,
+          radius: newRadius,
+        });
+        
+        // Reset node scale
+        node.scaleX(1);
+        node.scaleY(1);
+      } else if (isLine(shape)) {
+        const newWidth = Math.max(5, shape.width * nodeScaleX);
+        const newStrokeWidth = Math.max(1, shape.strokeWidth * nodeScaleX);
+        
+        // Lines are positioned by their center, need to convert back to start point
+        const rotationRad = ((shape.rotation || 0) * Math.PI) / 180;
+        const centerOffsetX = (newWidth / 2) * Math.cos(rotationRad);
+        const centerOffsetY = (newWidth / 2) * Math.sin(rotationRad);
+        const startX = currentX - centerOffsetX;
+        const startY = currentY - centerOffsetY;
+        
+        updateObject(shapeId, {
+          x: startX,
+          y: startY,
+          width: newWidth,
+          strokeWidth: newStrokeWidth,
+        });
+        
+        // Reset node scale
+        node.scaleX(1);
+        node.scaleY(1);
+      } else if (isText(shape)) {
+        const newFontSize = Math.max(8, (shape.fontSize || 16) * nodeScaleX);
+        
+        // Text is positioned differently, we need to get the text dimensions
+        const textNode = node as Konva.Text;
+        const textWidth = textNode.width() * nodeScaleX;
+        const textHeight = textNode.height() * nodeScaleY;
+        
+        // Convert from center position back to top-left
+        const topLeftX = currentX - textWidth / 2;
+        const topLeftY = currentY - textHeight / 2;
+        
+        updateObject(shapeId, {
+          x: topLeftX,
+          y: topLeftY,
+          fontSize: newFontSize,
+        });
+        
+        // Reset node scale
+        node.scaleX(1);
+        node.scaleY(1);
+      }
+    });
+
+    // Re-enable auto-capture
+    setDisableUndoCapture(false);
+
+    // Force layer redraw
+    layer.batchDraw();
+  };
+
   // Handle text click - select first, then open modal for editing
   const handleTextClick = (id: string, shiftKey: boolean = false) => {
     // Prevent selecting underlying shapes immediately after creating a shape
@@ -1761,11 +1901,13 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
             ? 'grab'
             : mode === 'select'
             ? 'default'
+            : mode === 'lasso'
+            ? 'crosshair'
             : 'crosshair'
         }}
       >
         {/* Grid layer */}
-        <Layer listening={false}>
+        <Layer ref={gridLayerRef} listening={false}>
           {/* Hide grid during large multi-select drag for better performance */}
           {!(selectedIds.length > 100 && multiSelectDragStart) && generateGridLines()}
         </Layer>
@@ -1981,36 +2123,30 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
             return null;
           })}
 
-          {/* Multi-select bounding box indicator (dotted line around all selected shapes) */}
-          {selectedIds.length >= 2 && multiSelectBounds && (() => {
-            const { minX, minY, maxX, maxY } = multiSelectBounds;
-            
-            // Add padding around the bounding box (compensate for zoom)
-            const padding = 8 / stageScale;
-            const boundingBoxX = minX - padding;
-            const boundingBoxY = minY - padding;
-            const boundingBoxWidth = (maxX - minX) + padding * 2;
-            const boundingBoxHeight = (maxY - minY) + padding * 2;
-            
-            // Compensate stroke width and dash pattern for zoom level
-            const zoomCompensatedStrokeWidth = 2 / stageScale;
-            const zoomCompensatedDash = [8 / stageScale, 4 / stageScale];
-            
-            return (
-              <Rect
-                x={boundingBoxX}
-                y={boundingBoxY}
-                width={boundingBoxWidth}
-                height={boundingBoxHeight}
-                stroke="#3B82F6"
-                strokeWidth={zoomCompensatedStrokeWidth}
-                dash={zoomCompensatedDash}
-                dashOffset={-dashOffset / stageScale}
-                listening={false}
-                perfectDrawEnabled={false}
-              />
-            );
-          })()}
+          {/* Multi-select transformer (for scaling multiple shapes together) */}
+          {selectedIds.length >= 2 && (
+            <Transformer
+              ref={multiSelectTransformerRef}
+              borderEnabled={true}
+              borderStroke="#3B82F6"
+              borderStrokeWidth={2}
+              anchorSize={8}
+              anchorStroke="#3B82F6"
+              anchorFill="#ffffff"
+              anchorCornerRadius={2}
+              enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right']}
+              rotateEnabled={false}
+              keepRatio={true}
+              boundBoxFunc={(oldBox, newBox) => {
+                // Enforce minimum size of 5px
+                if (Math.abs(newBox.width) < 5 || Math.abs(newBox.height) < 5) {
+                  return oldBox;
+                }
+                return newBox;
+              }}
+              onTransformEnd={handleMultiSelectTransformEnd}
+            />
+          )}
 
           {/* Preview shape during creation */}
           {previewShape && (
@@ -2073,6 +2209,18 @@ export function Canvas({ selectedColor, lineThickness, showInfo, onFrameShapesRe
               stroke="#3B82F6"
               strokeWidth={1}
               dash={[5, 5]}
+              listening={false}
+            />
+          )}
+
+          {/* Lasso path */}
+          {lassoPath.length > 0 && (
+            <KonvaLine
+              points={lassoPath.flatMap(p => [p.x, p.y])}
+              stroke="#3B82F6"
+              strokeWidth={2}
+              dash={[5, 5]}
+              closed={lassoPath.length >= 3}
               listening={false}
             />
           )}

@@ -26,15 +26,18 @@ export const Rectangle = memo(function Rectangle({ rectangle, isSelected, isDrag
 
   // Attach transformer to selected rectangle
   useEffect(() => {
-    if (isSelected && rectRef.current && transformerRef.current) {
-      transformerRef.current.nodes([rectRef.current]);
-      transformerRef.current.getLayer()?.batchDraw();
-    } else if (!isSelected && transformerRef.current) {
-      // Clean up transformer when deselected
-      transformerRef.current.nodes([]);
-      transformerRef.current.getLayer()?.batchDraw();
+    const transformer = transformerRef.current;
+    const rect = rectRef.current;
+    
+    if (isSelected && showTransformer && rect && transformer) {
+      transformer.nodes([rect]);
+      transformer.getLayer()?.batchDraw();
+    } else if (transformer) {
+      // Clean up transformer when deselected or when showTransformer is false
+      transformer.nodes([]);
+      transformer.getLayer()?.batchDraw();
     }
-  }, [isSelected]);
+  }, [isSelected, showTransformer]);
 
   // Handle transform end (resize/rotate)
   const handleTransformEnd = () => {
@@ -157,6 +160,7 @@ export const Rectangle = memo(function Rectangle({ rectangle, isSelected, isDrag
       <Rect
         ref={rectRef}
         id={rectangle.id}
+        name={rectangle.id}
         x={rectangle.x + rectangle.width / 2}
         y={rectangle.y + rectangle.height / 2}
         width={rectangle.width}
@@ -189,6 +193,7 @@ export const Rectangle = memo(function Rectangle({ rectangle, isSelected, isDrag
       {isSelected && (
         <Transformer
           ref={transformerRef}
+          visible={showTransformer}
           borderEnabled={showTransformer}
           borderStroke="#3B82F6"
           borderStrokeWidth={2}

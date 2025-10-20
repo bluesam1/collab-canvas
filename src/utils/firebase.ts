@@ -233,6 +233,50 @@ export const setupReconnection = (onReconnect: () => void) => {
   );
 };
 
+// User profile operations
+export const createUserProfile = async (userId: string, email: string, color: string) => {
+  const userRef = ref(database, `users/${userId}`);
+  
+  try {
+    await set(userRef, {
+      id: userId,
+      email,
+      color,
+      createdAt: serverTimestamp(),
+      lastSeenAt: serverTimestamp(),
+    });
+  } catch (error) {
+    console.error('Error creating user profile:', error);
+    throw new Error(handleFirebaseError(error));
+  }
+};
+
+export const getUserProfile = async (userId: string) => {
+  const userRef = ref(database, `users/${userId}`);
+  
+  try {
+    const snapshot = await get(userRef);
+    return snapshot.val();
+  } catch (error) {
+    console.error('Error fetching user profile:', error);
+    throw new Error(handleFirebaseError(error));
+  }
+};
+
+export const updateUserProfile = async (userId: string, updates: Record<string, unknown>) => {
+  const userRef = ref(database, `users/${userId}`);
+  
+  try {
+    await update(userRef, {
+      ...updates,
+      lastSeenAt: serverTimestamp(),
+    });
+  } catch (error) {
+    console.error('Error updating user profile:', error);
+    throw new Error(handleFirebaseError(error));
+  }
+};
+
 // Helper to create a database reference
 export const createRef = (path: string): DatabaseReference => {
   return ref(database, path);

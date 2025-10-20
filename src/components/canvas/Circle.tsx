@@ -26,15 +26,18 @@ export const Circle = memo(function Circle({ circle, isSelected, isDraggable, on
 
   // Attach transformer to selected circle
   useEffect(() => {
-    if (isSelected && circleRef.current && transformerRef.current) {
-      transformerRef.current.nodes([circleRef.current]);
-      transformerRef.current.getLayer()?.batchDraw();
-    } else if (!isSelected && transformerRef.current) {
-      // Clean up transformer when deselected
-      transformerRef.current.nodes([]);
-      transformerRef.current.getLayer()?.batchDraw();
+    const transformer = transformerRef.current;
+    const circleNode = circleRef.current;
+    
+    if (isSelected && showTransformer && circleNode && transformer) {
+      transformer.nodes([circleNode]);
+      transformer.getLayer()?.batchDraw();
+    } else if (transformer) {
+      // Clean up transformer when deselected or when showTransformer is false
+      transformer.nodes([]);
+      transformer.getLayer()?.batchDraw();
     }
-  }, [isSelected]);
+  }, [isSelected, showTransformer]);
 
   // Handle transform end (resize/rotate) - circles maintain circular shape
   const handleTransformEnd = () => {
@@ -129,6 +132,7 @@ export const Circle = memo(function Circle({ circle, isSelected, isDraggable, on
       <KonvaCircle
         ref={circleRef}
         id={circle.id}
+        name={circle.id}
         x={circle.centerX}
         y={circle.centerY}
         radius={circle.radius}
@@ -158,6 +162,7 @@ export const Circle = memo(function Circle({ circle, isSelected, isDraggable, on
       {isSelected && (
         <Transformer
           ref={transformerRef}
+          visible={showTransformer}
           borderEnabled={showTransformer}
           borderStroke="#3B82F6"
           borderStrokeWidth={2}

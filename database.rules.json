@@ -41,6 +41,7 @@
           "italic": { ".validate": "newData.isBoolean()" },
           "underline": { ".validate": "newData.isBoolean()" },
           "rotation": { ".validate": "newData.isNumber()" },
+          "updatedBy": { ".validate": "newData.isString()" },
           "$other": { ".validate": false }
         }
       }

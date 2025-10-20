@@ -101,4 +101,66 @@ export const calculateFramingTransform = (
   return { x, y, scale };
 };
 
+/**
+ * Get the center point of a shape
+ */
+export const getShapeCenter = (shape: Shape): { x: number; y: number } => {
+  switch (shape.type) {
+    case 'rectangle':
+      return {
+        x: shape.x + shape.width / 2,
+        y: shape.y + shape.height / 2,
+      };
+
+    case 'circle':
+      return {
+        x: shape.centerX,
+        y: shape.centerY,
+      };
+
+    case 'line':
+      return {
+        x: shape.x + shape.width / 2,
+        y: shape.y,
+      };
+
+    case 'text':
+      return {
+        x: shape.x + (shape.text.length * shape.fontSize * 0.3), // Rough horizontal center
+        y: shape.y - shape.fontSize / 2,
+      };
+
+    default:
+      return { x: 0, y: 0 };
+  }
+};
+
+/**
+ * Point-in-polygon test using ray casting algorithm
+ * Returns true if point (x, y) is inside the polygon defined by points
+ */
+export const isPointInPolygon = (
+  point: { x: number; y: number },
+  polygon: { x: number; y: number }[]
+): boolean => {
+  if (polygon.length < 3) return false;
+
+  let inside = false;
+  const { x, y } = point;
+
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].x;
+    const yi = polygon[i].y;
+    const xj = polygon[j].x;
+    const yj = polygon[j].y;
+
+    const intersect =
+      yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+
+    if (intersect) inside = !inside;
+  }
+
+  return inside;
+};
+
 

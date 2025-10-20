@@ -1,9 +1,7 @@
 import { useState } from 'react';
-import { Square, Circle, Type, Trash2, Droplet, Slash, Info, Hand, Terminal, BoxSelect, Maximize2, Undo, ZoomIn, ZoomOut, Redo } from 'lucide-react';
+import { Square, Circle, Type, Trash2, Droplet, Slash, Info, Hand, BoxSelect, Lasso, Maximize2, Undo, ZoomIn, ZoomOut, Redo, Download, Copy, Clipboard, CopyPlus } from 'lucide-react';
 import { useCanvas } from '../../hooks/useCanvas';
 import { isLine } from '../../types';
-import { useContext } from 'react';
-import { UserContext } from '../../contexts/UserContext';
 import { STANDARD_COLORS } from '../../utils/colors';
 
 interface ToolbarProps {
@@ -16,19 +14,18 @@ interface ToolbarProps {
   onBackToCanvasList: () => void;
   onFrameSelected?: () => void;
   onDeleteSelected?: () => void;
+  onExport: () => void;
   currentZoom: number;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onZoomReset: () => void;
 }
 
-export function Toolbar({ selectedColor, onColorChange, lineThickness, onLineThicknessChange, showInfo, onToggleInfo, onBackToCanvasList: _onBackToCanvasList, onFrameSelected, onDeleteSelected, currentZoom, onZoomIn, onZoomOut, onZoomReset }: ToolbarProps) {
-  const { mode, setMode, selectedIds, deleteSelected, updateObject, objects, createObject, clearSelection, undo, undoState, redo, redoState } = useCanvas();
+export function Toolbar({ selectedColor, onColorChange, lineThickness, onLineThicknessChange, showInfo, onToggleInfo, onBackToCanvasList: _onBackToCanvasList, onFrameSelected, onDeleteSelected, onExport, currentZoom, onZoomIn, onZoomOut, onZoomReset }: ToolbarProps) {
+  const { mode, setMode, selectedIds, deleteSelected, updateObject, objects, clearSelection, undo, undoState, redo, redoState, handleCopy, handleDuplicate } = useCanvas();
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showStrokeWidthMenu, setShowStrokeWidthMenu] = useState(false);
   const [showZoomMenu, setShowZoomMenu] = useState(false);
-  const [showHackerMenu, setShowHackerMenu] = useState(false);
-  const authContext = useContext(UserContext);
 
   // Determine if only lines are selected
   const selectedShapes = objects.filter(obj => selectedIds.includes(obj.id));
@@ -61,7 +58,7 @@ export function Toolbar({ selectedColor, onColorChange, lineThickness, onLineThi
     { id: 'rectangle' as const, icon: Square, label: 'Rectangle (R)' },
     { id: 'circle' as const, icon: Circle, label: 'Circle (C)' },
     { id: 'text' as const, icon: Type, label: 'Text (T)' },
-    { id: 'line' as const, icon: Slash, label: 'Line (L)' },
+    { id: 'line' as const, icon: Slash, label: 'Line (/)' },
   ];
 
   const strokeWidthOptions = [1, 2, 3, 4, 6, 8, 12, 16, 20, 24];
@@ -113,88 +110,78 @@ export function Toolbar({ selectedColor, onColorChange, lineThickness, onLineThi
     setShowStrokeWidthMenu(false);
   };
 
-  const handleCreate100Shapes = () => {
-    if (!authContext?.user) return;
-
-    const loremWords = [
-      'lorem', 'ipsum', 'dolor', 'sit', 'amet', 'consectetur', 'adipiscing', 'elit',
-      'sed', 'do', 'eiusmod', 'tempor', 'incididunt', 'ut', 'labore', 'et', 'dolore',
-      'magna', 'aliqua', 'enim', 'ad', 'minim', 'veniam', 'quis', 'nostrud', 'exercitation',
-      'ullamco', 'laboris', 'nisi', 'aliquip', 'ex', 'ea', 'commodo', 'consequat'
-    ];
-
-    const random = (min: number, max: number) => Math.random() * (max - min) + min;
-    const randomInt = (min: number, max: number) => Math.floor(random(min, max));
-    const randomColor = () => STANDARD_COLORS[randomInt(0, STANDARD_COLORS.length)];
-    const randomWords = (count: number) => {
-      const words = [];
-      for (let i = 0; i < count; i++) {
-        words.push(loremWords[randomInt(0, loremWords.length)]);
-      }
-      return words.join(' ');
-    };
-
-    // Create 25 of each shape type
-    for (let i = 0; i < 25; i++) {
-      // Rectangle
-      createObject({
-        type: 'rectangle',
-        x: random(-500, 1500),
-        y: random(-500, 1500),
-        width: random(50, 300),
-        height: random(50, 300),
-        fill: randomColor(),
-        rotation: random(0, 360),
-        createdBy: authContext.user.uid,
-      });
-
-      // Circle
-      createObject({
-        type: 'circle',
-        centerX: random(-500, 1500),
-        centerY: random(-500, 1500),
-        radius: random(25, 150),
-        fill: randomColor(),
-        rotation: random(0, 360),
-        createdBy: authContext.user.uid,
-      });
-
-      // Line
-      const lineLength = random(50, 400);
-      createObject({
-        type: 'line',
-        x: random(-500, 1500),
-        y: random(-500, 1500),
-        width: lineLength,
-        height: 0,
-        stroke: randomColor(),
-        strokeWidth: [1, 2, 3, 4, 6, 8, 12, 16, 20, 24][randomInt(0, 10)],
-        rotation: random(0, 360),
-        createdBy: authContext.user.uid,
-      });
-
-      // Text
-      const wordCount = randomInt(1, 4); // 1-3 words
-      createObject({
-        type: 'text',
-        x: random(-500, 1500),
-        y: random(-500, 1500),
-        text: randomWords(wordCount),
-        fontSize: randomInt(12, 72),
-        fill: randomColor(),
-        rotation: random(0, 360),
-        bold: Math.random() > 0.5,
-        italic: Math.random() > 0.7,
-        underline: Math.random() > 0.8,
-        createdBy: authContext.user.uid,
-      });
-    }
-
-    setShowHackerMenu(false);
-  };
-
   return (
     <div className="fixed top-16 left-0 bottom-0 z-20 w-16 bg-gray-800 shadow-lg flex flex-col items-center gap-2" style={{ paddingTop: '8px' }}>
+      {/* Color Picker Group */}
+      <div className="relative">
+        <button
+          onClick={() => setShowColorPicker(!showColorPicker)}
+          className="w-12 h-12 rounded-lg flex items-center justify-center transition-all hover:brightness-110 group relative border-2 border-gray-700"
+          title="Color"
+          style={{ backgroundColor: selectedColor }}
+        >
+          <Droplet size={20} fill={iconColor} stroke={iconColor} strokeWidth={1} />
+          <span className="absolute left-full ml-2 px-2 py-1 bg-zinc-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity z-30">
+            Color
+          </span>
+        </button>
+
+        {showColorPicker && (
+          <>
+            {/* Backdrop to close picker */}
+            <div
+              className="fixed inset-0 z-30"
+              onClick={() => setShowColorPicker(false)}
+            />
+            {/* Color picker popover */}
+            <div className="absolute left-full ml-2 bg-gray-800 rounded-lg p-3 border border-gray-700 shadow-xl z-40">
+              <div className="text-xs text-gray-400 mb-2">Choose Color</div>
+              <div className="grid grid-cols-10 gap-1 w-80 max-h-80 overflow-y-auto">
+                {STANDARD_COLORS.map((color, index) => (
+                  <button
+                    key={index}
+                    onClick={() => handleColorChange(color)}
+                    className={`w-6 h-6 rounded border transition-all hover:scale-110 ${
+                      selectedColor === color 
+                        ? 'border-white shadow-lg' 
+                        : 'border-gray-600 hover:border-gray-400'
+                    }`}
+                    style={{ backgroundColor: color }}
+                    title={color}
+                  />
+                ))}
+              </div>
+              <div className="mt-3 pt-3 border-t border-gray-700">
+                <div className="text-xs text-gray-400 mb-2">
+                  Current {selectedIds.length > 0 && `(click to apply to ${selectedIds.length} shape${selectedIds.length > 1 ? 's' : ''})`}
+                </div>
+                <button
+                  onClick={() => handleColorChange(selectedColor)}
+                  disabled={selectedIds.length === 0}
+                  className={`flex items-center gap-2 w-full p-1 rounded transition-all ${
+                    selectedIds.length > 0 
+                      ? 'hover:bg-gray-700 cursor-pointer' 
+                      : 'cursor-default opacity-60'
+                  }`}
+                  title={selectedIds.length > 0 ? 'Click to apply this color to selected shapes' : 'Select shapes to apply color'}
+                >
+                  <div
+                    className={`w-8 h-8 rounded border-2 transition-all ${
+                      selectedIds.length > 0 ? 'border-gray-600 hover:border-blue-500' : 'border-gray-600'
+                    }`}
+                    style={{ backgroundColor: selectedColor }}
+                  />
+                  <span className="text-xs text-white font-mono">{selectedColor.toUpperCase()}</span>
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Divider */}
+      <div className="w-10 h-px bg-gray-700 my-1" />
+
       {/* View Controls Group */}
       <div className="flex flex-col gap-1">
         {/* Pan Mode */}
@@ -226,6 +213,22 @@ export function Toolbar({ selectedColor, onColorChange, lineThickness, onLineThi
           <BoxSelect size={20} />
           <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity z-30">
             Multi-Select (S)
+          </span>
+        </button>
+
+        {/* Lasso Select Mode */}
+        <button
+          onClick={() => handleModeChange('lasso')}
+          className={`w-12 h-12 rounded-lg flex items-center justify-center transition-all group relative ${
+            mode === 'lasso'
+              ? 'bg-blue-600 text-white'
+              : 'text-gray-400 hover:text-white hover:bg-gray-700'
+          }`}
+          title="Lasso Select (L)"
+        >
+          <Lasso size={20} />
+          <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity z-30">
+            Lasso Select (L)
           </span>
         </button>
 
@@ -405,76 +408,6 @@ export function Toolbar({ selectedColor, onColorChange, lineThickness, onLineThi
       {/* Divider */}
       <div className="w-10 h-px bg-gray-700 my-1" />
 
-      {/* Color Picker */}
-      <div className="relative">
-        <button
-          onClick={() => setShowColorPicker(!showColorPicker)}
-          className="w-12 h-12 rounded-lg flex items-center justify-center transition-all hover:brightness-110 group relative border-2 border-gray-700"
-          title="Color"
-          style={{ backgroundColor: selectedColor }}
-        >
-          <Droplet size={20} fill={iconColor} stroke={iconColor} strokeWidth={1} />
-          <span className="absolute left-full ml-2 px-2 py-1 bg-zinc-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity z-30">
-            Color
-          </span>
-        </button>
-
-        {showColorPicker && (
-          <>
-            {/* Backdrop to close picker */}
-            <div
-              className="fixed inset-0 z-30"
-              onClick={() => setShowColorPicker(false)}
-            />
-            {/* Color picker popover */}
-            <div className="absolute left-full ml-2 bg-gray-800 rounded-lg p-3 border border-gray-700 shadow-xl z-40">
-              <div className="text-xs text-gray-400 mb-2">Choose Color</div>
-              <div className="grid grid-cols-10 gap-1 w-80 max-h-80 overflow-y-auto">
-                {STANDARD_COLORS.map((color, index) => (
-                  <button
-                    key={index}
-                    onClick={() => handleColorChange(color)}
-                    className={`w-6 h-6 rounded border transition-all hover:scale-110 ${
-                      selectedColor === color 
-                        ? 'border-white shadow-lg' 
-                        : 'border-gray-600 hover:border-gray-400'
-                    }`}
-                    style={{ backgroundColor: color }}
-                    title={color}
-                  />
-                ))}
-              </div>
-              <div className="mt-3 pt-3 border-t border-gray-700">
-                <div className="text-xs text-gray-400 mb-2">
-                  Current {selectedIds.length > 0 && `(click to apply to ${selectedIds.length} shape${selectedIds.length > 1 ? 's' : ''})`}
-                </div>
-                <button
-                  onClick={() => handleColorChange(selectedColor)}
-                  disabled={selectedIds.length === 0}
-                  className={`flex items-center gap-2 w-full p-1 rounded transition-all ${
-                    selectedIds.length > 0 
-                      ? 'hover:bg-gray-700 cursor-pointer' 
-                      : 'cursor-default opacity-60'
-                  }`}
-                  title={selectedIds.length > 0 ? 'Click to apply this color to selected shapes' : 'Select shapes to apply color'}
-                >
-                  <div
-                    className={`w-8 h-8 rounded border-2 transition-all ${
-                      selectedIds.length > 0 ? 'border-gray-600 hover:border-blue-500' : 'border-gray-600'
-                    }`}
-                    style={{ backgroundColor: selectedColor }}
-                  />
-                  <span className="text-xs text-white font-mono">{selectedColor.toUpperCase()}</span>
-                </button>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Divider */}
-      <div className="w-10 h-px bg-gray-700 my-1" />
-
       {/* Delete Button */}
       <button
         onClick={handleDelete}
@@ -526,6 +459,55 @@ export function Toolbar({ selectedColor, onColorChange, lineThickness, onLineThi
         </span>
       </button>
 
+      {/* Copy Button */}
+      <button
+        onClick={handleCopy}
+        disabled={selectedIds.length === 0}
+        className={`w-12 h-12 rounded-lg flex items-center justify-center transition-colors group relative ${
+          selectedIds.length > 0
+            ? 'text-gray-400 hover:text-white hover:bg-gray-700'
+            : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+        }`}
+        title={selectedIds.length > 0 ? `Copy (${navigator.platform.includes('Mac') ? 'Cmd' : 'Ctrl'}+C)` : 'Select shapes to copy'}
+      >
+        <Copy size={20} />
+        <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity z-30">
+          {selectedIds.length > 0 ? `Copy (${navigator.platform.includes('Mac') ? 'Cmd' : 'Ctrl'}+C)` : 'Select shapes to copy'}
+        </span>
+      </button>
+
+      {/* Paste Button */}
+      <button
+        onClick={() => {
+          // Dispatch event so CanvasEditorPage can provide viewport center
+          window.dispatchEvent(new CustomEvent('toolbar-paste'));
+        }}
+        className="w-12 h-12 rounded-lg flex items-center justify-center transition-colors group relative text-gray-400 hover:text-white hover:bg-gray-700"
+        title={`Paste (${navigator.platform.includes('Mac') ? 'Cmd' : 'Ctrl'}+V)`}
+      >
+        <Clipboard size={20} />
+        <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity z-30">
+          Paste ({navigator.platform.includes('Mac') ? 'Cmd' : 'Ctrl'}+V)
+        </span>
+      </button>
+
+      {/* Duplicate Button */}
+      <button
+        onClick={handleDuplicate}
+        disabled={selectedIds.length === 0}
+        className={`w-12 h-12 rounded-lg flex items-center justify-center transition-colors group relative ${
+          selectedIds.length > 0
+            ? 'text-gray-400 hover:text-white hover:bg-gray-700'
+            : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+        }`}
+        title={selectedIds.length > 0 ? `Duplicate (${navigator.platform.includes('Mac') ? 'Cmd' : 'Ctrl'}+D)` : 'Select shapes to duplicate'}
+      >
+        <CopyPlus size={20} />
+        <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity z-30">
+          {selectedIds.length > 0 ? `Duplicate (${navigator.platform.includes('Mac') ? 'Cmd' : 'Ctrl'}+D)` : 'Select shapes to duplicate'}
+        </span>
+      </button>
+
       {/* Spacer to push bottom buttons */}
       <div className="flex-1" />
 
@@ -545,47 +527,17 @@ export function Toolbar({ selectedColor, onColorChange, lineThickness, onLineThi
         </span>
       </button>
 
-      {/* Hacker Menu Button */}
-      <div className="relative">
-        <button
-          onClick={() => setShowHackerMenu(!showHackerMenu)}
-          className={`w-12 h-12 rounded-lg flex items-center justify-center transition-colors group relative ${
-            showHackerMenu
-              ? 'bg-green-600 text-white'
-              : 'text-gray-400 hover:text-white hover:bg-gray-700'
-          }`}
-          title="Developer Tools"
-        >
-          <Terminal size={20} />
-          <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity z-30">
-            Developer Tools
-          </span>
-        </button>
-
-        {showHackerMenu && (
-          <>
-            {/* Backdrop to close menu */}
-            <div
-              className="fixed inset-0 z-30"
-              onClick={() => setShowHackerMenu(false)}
-            />
-            {/* Hacker menu flyout */}
-            <div className="absolute left-full bottom-0 ml-2 bg-gray-800 rounded-lg border border-gray-700 shadow-xl z-40 min-w-[200px]">
-              <div className="text-xs text-gray-400 px-3 py-2 border-b border-gray-700 font-mono">
-                Developer Tools
-              </div>
-              <button
-                onClick={handleCreate100Shapes}
-                className="w-full text-left px-3 py-2 text-sm text-white hover:bg-gray-700 transition-colors flex items-center gap-2 font-mono"
-              >
-                <Terminal size={14} className="text-green-400" />
-                Create 100
-              </button>
-            </div>
-          </>
-        )}
-
-      </div>
+      {/* Export Button */}
+      <button
+        onClick={onExport}
+        className="w-12 h-12 rounded-lg flex items-center justify-center transition-colors group relative text-gray-400 hover:text-white hover:bg-gray-700"
+        title={`Export canvas as PNG (${navigator.platform.includes('Mac') ? 'Cmd' : 'Ctrl'}+E)`}
+      >
+        <Download size={20} />
+        <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity z-30">
+          Export PNG ({navigator.platform.includes('Mac') ? 'Cmd' : 'Ctrl'}+E)
+        </span>
+      </button>
     </div>
   );
 }
