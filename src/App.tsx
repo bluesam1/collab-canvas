@@ -4,6 +4,8 @@ import { CanvasContextProvider } from './contexts/CanvasContext';
 import { PresenceContextProvider } from './contexts/PresenceContext';
 import { CanvasListProvider } from './contexts/CanvasListContext';
 import { ToastProvider } from './contexts/ToastContext';
+import { ConnectionProvider } from './contexts/ConnectionContext';
+import { NotificationContextProvider } from './contexts/NotificationContext';
 import { AuthProvider } from './components/auth/AuthProvider';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { CanvasListPage } from './pages/CanvasListPage';
@@ -21,11 +23,11 @@ function CanvasEditorRoute() {
   }
 
   return (
-    <CanvasContextProvider canvasId={canvasId}>
-      <PresenceContextProvider canvasId={canvasId}>
+    <PresenceContextProvider canvasId={canvasId}>
+      <CanvasContextProvider canvasId={canvasId}>
         <CanvasEditorPage />
-      </PresenceContextProvider>
-    </CanvasContextProvider>
+      </CanvasContextProvider>
+    </PresenceContextProvider>
   );
 }
 
@@ -36,23 +38,27 @@ function App() {
       <UserContextProvider>
         <AuthProvider>
           <ToastProvider>
-            <Router>
-              <CanvasListProvider>
-                <Routes>
-                {/* Canvas List Route */}
-                <Route path="/" element={<CanvasListPage />} />
-                
-                {/* Canvas Editor Route */}
-                <Route 
-                  path="/canvas/:canvasId" 
-                  element={<CanvasEditorRoute />} 
-                />
-                
-                {/* Catch-all route - redirect to home */}
-                <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
-              </CanvasListProvider>
-            </Router>
+            <ConnectionProvider>
+              <NotificationContextProvider>
+                <Router>
+                  <CanvasListProvider>
+                    <Routes>
+                    {/* Canvas List Route */}
+                    <Route path="/" element={<CanvasListPage />} />
+                    
+                    {/* Canvas Editor Route */}
+                    <Route 
+                      path="/canvas/:canvasId" 
+                      element={<CanvasEditorRoute />} 
+                    />
+                    
+                    {/* Catch-all route - redirect to home */}
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                    </Routes>
+                  </CanvasListProvider>
+                </Router>
+              </NotificationContextProvider>
+            </ConnectionProvider>
           </ToastProvider>
         </AuthProvider>
       </UserContextProvider>

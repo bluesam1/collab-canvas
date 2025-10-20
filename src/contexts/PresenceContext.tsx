@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { UserContext } from './UserContext';
 import type { PresenceUser, CursorPosition, PresenceContextType } from '../types';
 import { subscribeToPresence, updateCursor as updateCursorFirebase, setUserPresence, updateUserPresence } from '../utils/firebase';
+import { useNotification } from '../hooks/useNotification';
 
 // Create the context
 export const PresenceContext = createContext<PresenceContextType | undefined>(undefined);
@@ -16,6 +17,7 @@ export const PresenceContextProvider = ({ children, canvasId }: PresenceContextP
   const authContext = useContext(UserContext);
   const [onlineUsers, setOnlineUsers] = useState<Map<string, PresenceUser>>(new Map());
   const [cursors, setCursors] = useState<Map<string, CursorPosition>>(new Map());
+  const { addNotification } = useNotification();
   
   // Throttle state for cursor updates
   const lastUpdateTimeRef = useRef<number>(0);
@@ -25,12 +27,16 @@ export const PresenceContextProvider = ({ children, canvasId }: PresenceContextP
   
   // Keep track of user order for color assignment
   const userOrderRef = useRef<string[]>([]);
+  
+  // Track previous online users for detecting joins/leaves
+  const previousOnlineUsersRef = useRef<Map<string, PresenceUser>>(new Map());
 
   // Subscribe to Firebase presence updates for online users and cursors
   useEffect(() => {
     const CURSOR_TIMEOUT = 30000; // 30 seconds
     
     const unsubscribe = subscribeToPresence(canvasId, (presenceData) => {
+      console.log('📡 Presence data received:', presenceData);
       const now = Date.now();
       const newOnlineUsers = new Map<string, PresenceUser>();
       const newCursors = new Map<string, CursorPosition>();
@@ -69,12 +75,12 @@ export const PresenceContextProvider = ({ children, canvasId }: PresenceContextP
           });
         }
         
-        // Add cursor if it exists and user is not the current user
-        if (user.cursor && userId !== authContext?.user?.uid) {
+        // Add cursor if it exists, user is not the current user, AND user is online
+        if (user.cursor && userId !== authContext?.user?.uid && user.isOnline === true) {
           const cursorTimestamp = user.cursor.timestamp || 0;
           const timeSinceUpdate = now - cursorTimestamp;
           
-          // Only show cursor if it was updated within the last 30 seconds
+          // Only show cursor if it was updated within the last 30 seconds AND user is online
           if (timeSinceUpdate < CURSOR_TIMEOUT) {
             // Get color from online users map if available
             const userColor = newOnlineUsers.get(userId)?.color || user.cursor.color || user.color || '#3B82F6';
@@ -90,6 +96,43 @@ export const PresenceContextProvider = ({ children, canvasId }: PresenceContextP
         }
       });
       
+      
+      console.log(`👥 Found ${newOnlineUsers.size} online users:`, Array.from(newOnlineUsers.entries()).map(([id, user]) => ({ id, email: user.email })));
+      console.log(`🖱️ Found ${newCursors.size} cursors`);
+      
+      // Detect user joins/leaves for notifications (only after initial load)
+      if (previousOnlineUsersRef.current.size > 0 && authContext?.user) {
+        const currentUserId = authContext.user.uid;
+        
+        // Detect new users (joined)
+        newOnlineUsers.forEach((user, userId) => {
+          if (!previousOnlineUsersRef.current.has(userId) && userId !== currentUserId) {
+            // User just joined
+            addNotification({
+              type: 'user-join',
+              userEmail: user.email,
+              userColor: user.color,
+              message: 'joined the canvas',
+            });
+          }
+        });
+        
+        // Detect users who left
+        previousOnlineUsersRef.current.forEach((user, userId) => {
+          if (!newOnlineUsers.has(userId) && userId !== currentUserId) {
+            // User just left
+            addNotification({
+              type: 'user-leave',
+              userEmail: user.email,
+              userColor: user.color,
+              message: 'left the canvas',
+            });
+          }
+        });
+      }
+      
+      // Update previous online users for next comparison
+      previousOnlineUsersRef.current = new Map(newOnlineUsers);
       
       setOnlineUsers(newOnlineUsers);
       setCursors(newCursors);
@@ -128,17 +171,27 @@ export const PresenceContextProvider = ({ children, canvasId }: PresenceContextP
   // Set user presence when they log in
   useEffect(() => {
     if (!authContext?.user || !authContext.isAuthenticated) {
+      console.log('👤 Presence: No user or not authenticated');
       return;
     }
 
     const user = authContext.user;
     
+    console.log('👤 Setting user presence:', {
+      canvasId,
+      userId: user.uid,
+      email: user.email,
+      color: user.color
+    });
+    
     // Set user presence in Firebase for this canvas
     setUserPresence(canvasId, user.uid, {
       email: user.email || 'Unknown',
       color: user.color || '#3B82F6',
+    }).then(() => {
+      console.log('✅ User presence set successfully!');
     }).catch((error) => {
-      console.error('Error setting user presence:', error);
+      console.error('❌ Error setting user presence:', error);
     });
 
     // Update lastActive timestamp periodically (every 30 seconds)

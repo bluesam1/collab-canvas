@@ -14,9 +14,9 @@ export function UserSettingsModal({ isOpen, onClose }: UserSettingsModalProps) {
 
   if (!isOpen || !authContext?.user) return null;
 
-  const handleColorChange = (newColor: string) => {
+  const handleColorChange = async (newColor: string) => {
     if (authContext.changeUserColor) {
-      authContext.changeUserColor(newColor);
+      await authContext.changeUserColor(newColor);
     }
   };
 

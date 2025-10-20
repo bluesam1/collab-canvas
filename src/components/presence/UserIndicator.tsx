@@ -4,6 +4,7 @@ interface UserIndicatorProps {
   email: string;
   color: string;
   isCurrentUser?: boolean;
+  isOnline?: boolean;
   onOpenSettings?: () => void;
 }
 

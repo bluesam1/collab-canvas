@@ -13,11 +13,24 @@ export function OnlineUsers() {
 
   // Convert Map to Array for rendering
   const usersArray = Array.from(onlineUsers.values());
-  const onlineCount = usersArray.length;
-
+  
   // Separate current user from others
-  const currentUser = usersArray.find(user => user.uid === authContext?.user?.uid);
+  let currentUser = usersArray.find(user => user.uid === authContext?.user?.uid);
   const otherUsers = usersArray.filter(user => user.uid !== authContext?.user?.uid);
+  
+  // ALWAYS show current user (even if not in onlineUsers yet)
+  if (!currentUser && authContext?.user) {
+    currentUser = {
+      uid: authContext.user.uid,
+      email: authContext.user.email || 'You',
+      color: authContext.user.color || '#3B82F6',
+      isOnline: false, // Mark as offline since not in onlineUsers
+      lastActive: Date.now(),
+    };
+  }
+  
+  // Total count includes current user + other users
+  const onlineCount = (currentUser ? 1 : 0) + otherUsers.length;
   const otherUsersCount = otherUsers.length;
 
   const handleOpenSettings = () => {
@@ -82,6 +95,7 @@ export function OnlineUsers() {
                     email={currentUser.email}
                     color={currentUser.color}
                     isCurrentUser={true}
+                    isOnline={currentUser.isOnline}
                     onOpenSettings={handleOpenSettings}
                   />
                 )}

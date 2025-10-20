@@ -150,6 +150,7 @@ export const Line = memo(function Line({ line, isSelected, isDraggable, onClick,
       <KonvaLine
         ref={lineRef}
         id={line.id}
+        name={line.id}
         x={centerX}
         y={centerY}
         points={[0, 0, line.width, 0]}

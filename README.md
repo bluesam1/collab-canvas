@@ -6,7 +6,7 @@
 [![Vite](https://img.shields.io/badge/Vite-7.1-646cff?logo=vite)](https://vitejs.dev/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-A real-time collaborative canvas application where multiple users can create, select, transform, and interact with multiple shape types together. Features multi-select, resize, rotate, and real-time synchronization. Built with React, TypeScript, Firebase, and Konva.
+A real-time collaborative canvas application where multiple users can create, select, transform, and interact with multiple shape types together. Features export, copy/paste, lasso selection, multi-select transform, arrow key nudging, resize, rotate, and real-time synchronization. Built with React, TypeScript, Firebase, and Konva.
 
 > **🚀 Live Demo**: [https://collab-canvas-2ba2e.web.app/](https://collab-canvas-2ba2e.web.app/)
 
@@ -17,17 +17,23 @@ A real-time collaborative canvas application where multiple users can create, se
 - 🔗 **URL-Based Sharing**: Share canvases instantly by copying the link - no invite system needed
 - 🎨 **Real-time Collaboration**: See other users' changes instantly (<100ms sync)
 - 🖱️ **Multiplayer Cursors**: View other users' cursor positions with name labels (<50ms updates)
-- 🎨 **Multiple Modes**: Pan, Select, Rectangle, Circle, Line, and Text creation modes
+- 🎨 **Multiple Modes**: Pan, Select, Lasso, Rectangle, Circle, Line, and Text creation modes
 - 📦 **Multiple Shape Types**: Rectangles, circles, lines, and text with formatting options
-- 🔲 **Multi-Select**: Select multiple shapes using 5 methods (click, Shift+click, drag-box, Ctrl/Cmd+A, Select mode)
+- 🔲 **Multi-Select**: Select multiple shapes using 6 methods (click, Shift+click, drag-box, lasso, Ctrl/Cmd+A, Select mode)
 - 🔄 **Transform Operations**: Resize and rotate shapes with intuitive handles and controls
+- 📐 **Multi-Select Transform**: Scale multiple selected shapes together as a group with aspect ratio locking
+- 📥 **Export to PNG**: High-quality canvas export with Cmd/Ctrl+E shortcut
+- 📋 **Copy/Paste/Duplicate**: Standard clipboard operations (Cmd/Ctrl+C/V/X/D) with smart positioning
+- ✨ **Lasso Selection**: Free-form selection tool for irregular shape groups
+- ⌨️ **Arrow Key Nudging**: Precise 5px positioning with arrow keys
 - 🎯 **Advanced Manipulation**: Move, delete, change colors, and adjust line thickness for single or multiple shapes
 - 📐 **Smart View Control**: Auto-frame selected shapes or AI-generated content with smooth animations
+- ↩️ **Undo/Redo**: Full history tracking with Ctrl/Cmd+Z/Y
 - 👥 **Presence System**: See who's online with colored indicators per canvas
 - 🔒 **Secure Authentication**: Email link and Google Sign-In support
 - 📱 **Responsive Canvas**: Pan and zoom with smooth 60 FPS animations
 - ⚡ **Optimized Performance**: Handles 100+ shapes with multiple concurrent users, optimized multi-select drag
-- ⌨️ **Keyboard Shortcuts**: Quick access to all modes and operations (V, S, R, C, L, T, Ctrl/Cmd+A)
+- ⌨️ **Keyboard Shortcuts**: Quick access to all modes and operations (V, S, L, R, C, T, /, Ctrl/Cmd+A/C/V/X/D/E/Z/Y, Arrow keys)
 
 ## Tech Stack
 
@@ -409,9 +415,10 @@ AI-powered coding guidelines ensure consistent patterns across the codebase:
 8. **Switch Modes**: Toggle between different modes using toolbar or keyboard shortcuts
    - Press `V` for Pan mode (navigate canvas)
    - Press `S` for Select mode (drag-to-select box)
+   - Press `L` for Lasso mode (free-form selection)
    - Press `R` for Rectangle mode
    - Press `C` for Circle mode
-   - Press `L` for Line mode
+   - Press `/` for Line mode
    - Press `T` for Text mode
 9. **Create Shapes**: Click and drag to create shapes (or click for text)
    - **Rectangles**: Drag from corner to corner
@@ -421,40 +428,61 @@ AI-powered coding guidelines ensure consistent patterns across the codebase:
 10. **Select Shapes**: Multiple ways to select
     - Click on a shape to select it
     - Shift+Click to add/remove from selection
-    - Drag a selection box in Select mode
+    - Drag a selection box in Select mode (S key)
+    - Draw a lasso around shapes in Lasso mode (L key)
     - Press Ctrl/Cmd+A to select all
 11. **Transform Shapes**: Resize and rotate selected shapes
-    - **Resize**: Drag corner/edge handles (single selection only)
-    - **Rotate**: Drag rotation handle (rectangles, lines, text)
-    - Hold Shift to lock aspect ratio or disable angle snapping
-12. **Customize Shapes**: Change colors and line thickness
+    - **Single Shape Resize**: Drag corner/edge handles
+    - **Single Shape Rotate**: Drag rotation handle (rectangles, lines, text)
+    - **Multi-Select Transform**: Scale multiple shapes together (corner handles only, aspect ratio locked)
+    - Hold Shift to lock aspect ratio or disable angle snapping (single shapes)
+12. **Position Shapes**: Move shapes precisely
+    - **Drag**: Click and drag to move (supports multi-select)
+    - **Arrow Keys**: Nudge 5 pixels (↑↓←→) with undo support
+13. **Clipboard Operations**: Copy, paste, cut, and duplicate
+    - **Copy**: Ctrl/Cmd+C or toolbar button
+    - **Paste**: Ctrl/Cmd+V or toolbar button (pastes at viewport center)
+    - **Cut**: Ctrl/Cmd+X (copy + delete)
+    - **Duplicate**: Ctrl/Cmd+D or toolbar button (offset +50px)
+14. **Export Canvas**: Save your work as PNG
+    - Press Ctrl/Cmd+E or click Export button
+    - High-quality PNG with timestamp filename
+15. **Undo/Redo**: Full history tracking
+    - **Undo**: Ctrl/Cmd+Z
+    - **Redo**: Ctrl/Cmd+Y
+16. **Customize Shapes**: Change colors and line thickness
     - Use color picker for any hex color
     - Adjust line thickness (1-24px) for lines
-13. **Move Shapes**: Select and drag to move (supports multi-select group movement)
-14. **Delete Shapes**: Select shapes and press Delete/Backspace or click Delete button
-15. **Pan Canvas**: Drag canvas in Pan mode to move around the workspace
-16. **Zoom Canvas**: Use mouse wheel to zoom in/out (0.1x to 5x)
+17. **Delete Shapes**: Select shapes and press Delete/Backspace or click Delete button
+18. **Pan Canvas**: Drag canvas in Pan mode to move around the workspace
+19. **Zoom Canvas**: Use mouse wheel to zoom in/out (0.1x to 5x)
 
 ### AI Assistant
-17. **Open AI Assistant**: Click the sparkles icon (✨) in the top navigation
-18. **Natural Language Commands**: Type commands like:
+20. **Open AI Assistant**: Click the sparkles icon (✨) in the top navigation
+21. **Natural Language Commands**: Type commands like:
     - "Create 3 blue rectangles in a row"
     - "Make a traffic light with red, yellow, and green circles"
     - "Arrange all shapes in a 3x3 grid"
     - "Change selected shapes to purple"
-19. **AI Tools**: The AI can create shapes, move them, resize, rotate, change colors, arrange in grids, align, distribute, and more
-20. **Smart Defaults**: When you don't specify colors or line widths, the AI uses your currently selected color and stroke width
-21. **Viewport-Aware**: AI creates shapes in the visible area you're looking at - pan/zoom to where you want them to appear
-22. **Auto-Selection & Framing**: AI-created shapes are automatically selected and framed in view for immediate editing
+22. **AI Tools**: The AI can create shapes, move them, resize, rotate, change colors, arrange in grids, align, distribute, and more
+23. **Smart Defaults**: When you don't specify colors or line widths, the AI uses your currently selected color and stroke width
+24. **Viewport-Aware**: AI creates shapes in the visible area you're looking at - pan/zoom to where you want them to appear
+25. **Auto-Selection & Framing**: AI-created shapes are automatically selected and framed in view for immediate editing
 
 ### View Management
-23. **Frame Selected Shapes**: Click the Frame Selected button (📐) in the toolbar to automatically zoom and center the view around your selected shapes
-24. **Keyboard Shortcuts**: Use V for Pan, S for Select, R for Rectangle, C for Circle, L for Line, T for Text
+26. **Frame Selected Shapes**: Click the Frame Selected button (📐) in the toolbar to automatically zoom and center the view around your selected shapes
+27. **Keyboard Shortcuts**: Complete reference:
+    - **Modes**: V (Pan), S (Select Box), L (Lasso), R (Rectangle), C (Circle), / (Line), T (Text)
+    - **Selection**: Ctrl/Cmd+A (Select All), Escape (Deselect)
+    - **Clipboard**: Ctrl/Cmd+C (Copy), V (Paste), X (Cut), D (Duplicate)
+    - **History**: Ctrl/Cmd+Z (Undo), Y (Redo)
+    - **Canvas**: Ctrl/Cmd+E (Export)
+    - **Position**: Arrow Keys (Nudge 5px)
 
 ### Collaboration
-25. **See Collaborators**: View online users in the top-right corner
-26. **See Cursors**: Watch other users' cursors move in real-time
-27. **Real-time Sync**: All changes appear instantly for everyone (including AI-generated shapes)
+28. **See Collaborators**: View online users in the top-right corner
+29. **See Cursors**: Watch other users' cursors move in real-time
+30. **Real-time Sync**: All changes appear instantly for everyone (including AI-generated shapes)
 
 ## Features Details
 
@@ -477,11 +505,16 @@ AI-powered coding guidelines ensure consistent patterns across the codebase:
 
 ### Multi-Select & Transform
 
-- **5 Selection Methods**: Click, Shift+click, drag-to-select box, Ctrl/Cmd+A, Select mode
-- **Group Operations**: Move, delete, color change, line thickness (for multiple selected shapes)
-- **Resize**: Drag handles to resize (shape-specific behaviors)
-- **Rotate**: Center-based rotation with 15° angle snapping (rectangles, lines, text)
-- **Performance**: Optimized multi-select drag with ~99.9% reduction in Firebase writes
+- **6 Selection Methods**: Click, Shift+click, drag-to-select box, lasso selection, Ctrl/Cmd+A, Select mode
+- **Lasso Selection**: Free-form selection tool (L key) using point-in-polygon algorithm
+- **Group Operations**: Move, delete, color change, line thickness, scale (for multiple selected shapes)
+- **Multi-Select Transform**: Scale multiple shapes together with corner handles (aspect ratio locked)
+- **Single Shape Resize**: Drag handles to resize (shape-specific behaviors)
+- **Single Shape Rotate**: Center-based rotation with 15° angle snapping (rectangles, lines, text)
+- **Arrow Key Nudging**: Precise 5px positioning with full undo/redo support
+- **Clipboard Operations**: Copy (Cmd/Ctrl+C), Paste (Cmd/Ctrl+V), Cut (Cmd/Ctrl+X), Duplicate (Cmd/Ctrl+D)
+- **Export to PNG**: High-quality canvas export with Cmd/Ctrl+E
+- **Performance**: Optimized multi-select drag with ~99.9% reduction in Firebase writes, batch updates for paste/duplicate
 
 ### Multiplayer
 
@@ -786,13 +819,12 @@ When testing, monitor these metrics:
 
 ## Known Limitations
 
-- No undo/redo functionality
-- No copy/paste operations
 - No permanent shape grouping (only temporary for operations)
 - No layers/z-index control
-- No export/import functionality
+- No import functionality (export is available)
 - Single-line text only (no multi-line support)
 - Basic mobile support (no touch gesture optimizations)
+- Multi-select transform only scales (no rotation or non-uniform scaling)
 
 ## Deployment Information
 
@@ -853,9 +885,14 @@ This project exceeds all MVP requirements and includes enhanced collaboration fe
 - [x] Real-time collaborative canvas (5000×5000px workspace)
 - [x] Multiple shape types (rectangles, circles, lines, text)
 - [x] Flexible color customization with hex color picker
-- [x] Multi-select with 5 selection methods
-- [x] Transform operations (resize and rotate)
-- [x] Shape manipulation (selection, movement, deletion, color, line thickness)
+- [x] Multi-select with 6 selection methods (including lasso)
+- [x] Transform operations (resize, rotate, multi-select scaling)
+- [x] Shape manipulation (selection, movement, deletion, color, line thickness, nudging)
+- [x] Export to PNG with high quality (Cmd/Ctrl+E)
+- [x] Copy/Paste/Cut/Duplicate operations (Cmd/Ctrl+C/V/X/D)
+- [x] Lasso selection tool for free-form selection (L key)
+- [x] Arrow key nudging for precise positioning (5px increments)
+- [x] Undo/Redo with full history tracking (Cmd/Ctrl+Z/Y)
 - [x] Pan and zoom with programmatic smooth animations (60 FPS)
 - [x] Multiplayer cursor tracking with name labels
 - [x] Online users presence system with colored indicators
@@ -910,17 +947,22 @@ See the planning documents for potential features in future iterations:
 - ✅ Multiple shape types (rectangles, circles, lines, text) - COMPLETED
 - ✅ Multi-selection and transforms (resize, rotate) - COMPLETED
 - ✅ Keyboard shortcuts for power users - COMPLETED
-- Undo/redo functionality
-- Copy/paste operations
+- ✅ Undo/redo functionality - COMPLETED
+- ✅ Copy/paste operations - COMPLETED
+- ✅ Export to PNG - COMPLETED
+- ✅ Lasso selection tool - COMPLETED
+- ✅ Multi-select transform (group scaling) - COMPLETED
+- ✅ Arrow key nudging - COMPLETED
 - Permanent shape grouping (logical groups that persist)
 
 ### Phase 3 (Advanced Features)
-- Export to PNG/SVG/PDF
+- Export to SVG/PDF (PNG already completed)
 - Import images and SVG files
 - Layers and z-index control
 - Persistent named workspaces
 - Comments and annotations
 - Version history
+- Multi-select rotation (currently only scaling supported)
 
 ### Phase 4 (Team Features)
 - User permissions and roles
@@ -1047,6 +1089,14 @@ This is an MVP project built for learning purposes. Contributions welcome!
   - Rotation with center-based origin and angle snapping
   - Performance optimizations for multi-object operations
   - UX enhancements (Pan mode, Select mode, keyboard shortcuts)
+- ✅ Feature: Advanced Canvas Tools (Export, Copy/Paste, Lasso, Multi-Select Transform, Nudging)
+  - Export canvas as high-quality PNG (Cmd/Ctrl+E)
+  - Copy/Paste/Cut/Duplicate operations (Cmd/Ctrl+C/V/X/D)
+  - Lasso selection tool for free-form selection (L key)
+  - Multi-select transform with corner-only handles (aspect ratio locked)
+  - Arrow key nudging for precise positioning (5px increments)
+  - Undo/Redo support for all operations
+  - Batch Firebase updates for performance
 - 🚧 Feature: AI Canvas Agent (Priority #1) - IN PROGRESS
   - Firebase Cloud Functions backend with OpenAI GPT-4
   - 14 AI tools for canvas operations (creation, manipulation, layout, context)

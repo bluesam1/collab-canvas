@@ -1,4 +1,4 @@
-import { createContext, useState, useEffect } from 'react';
+import { createContext, useState, useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import type { Shape, CanvasContextType, CanvasMode, Rectangle, Circle, Line, Text, UndoState, UndoOperationType } from '../types';
 import { 
@@ -10,6 +10,9 @@ import { ref, push, set } from 'firebase/database';
 import { database } from '../config/firebase';
 import { MAX_CANVAS_OBJECTS, CANVAS_LIMITS } from '../constants/canvas';
 import { useToast } from '../hooks/useToast';
+import { useNotification } from '../hooks/useNotification';
+import { useAuth } from '../hooks/useAuth';
+import { usePresence } from '../hooks/usePresence';
 
 // Create the context
 export const CanvasContext = createContext<CanvasContextType | undefined>(undefined);
@@ -27,7 +30,23 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
   const [undoState, setUndoState] = useState<UndoState | null>(null);
   const [disableUndoCapture, setDisableUndoCapture] = useState(false);
   const [redoState, setRedoState] = useState<UndoState | null>(null);
+  const [clipboard, setClipboard] = useState<{ objects: Shape[]; pasteOffset: number }>({
+    objects: [],
+    pasteOffset: 0,
+  });
   const { showToast } = useToast();
+  const { addNotification } = useNotification();
+  const { user } = useAuth();
+  const { onlineUsers } = usePresence();
+  
+  // Track previous objects for detecting changes
+  const previousObjectsRef = useRef<Map<string, Shape>>(new Map());
+  
+  // Track objects being deleted by current user (to prevent self-notifications)
+  const userDeletingIdsRef = useRef<Set<string>>(new Set());
+  
+  // Track objects being created by current user (to prevent self-notifications)
+  const userCreatingIdsRef = useRef<Set<string>>(new Set());
 
   // Set up Firebase listener for real-time sync
   useEffect(() => {
@@ -112,6 +131,117 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
         }
       });
 
+      // Detect object creation/deletion for notifications
+      console.log('[CanvasContext] Notification detection check:', {
+        isLoading,
+        hasUser: !!user,
+        objectCount: objectsArray.length,
+        previousObjectCount: previousObjectsRef.current.size,
+        onlineUsersSize: onlineUsers.size,
+      });
+      
+      if (!isLoading && user) {
+        const currentIds = new Set(objectsArray.map(obj => obj.id));
+        const previousIds = new Set(previousObjectsRef.current.keys());
+
+        // Detect new objects (created by others)
+        objectsArray.forEach(obj => {
+          if (!previousIds.has(obj.id) && !userCreatingIdsRef.current.has(obj.id) && obj.createdBy !== user.uid) {
+            // Object was just created by another user
+            // Look up user details from presence
+            const creatorUser = onlineUsers.get(obj.createdBy);
+            const userEmail = creatorUser?.email || 'A collaborator';
+            const userColor = creatorUser?.color || '#6366f1';
+            
+            console.log('[CanvasContext] Object created by other user:', {
+              objectId: obj.id,
+              type: obj.type,
+              createdBy: obj.createdBy,
+              userEmail,
+              userColor,
+              onlineUsersSize: onlineUsers.size,
+            });
+            
+            addNotification({
+              type: 'object-created',
+              userEmail,
+              userColor,
+              message: `created a ${obj.type}`,
+              shapeType: obj.type,
+            });
+          }
+          
+          // Remove from userCreatingIdsRef after processing
+          if (userCreatingIdsRef.current.has(obj.id)) {
+            userCreatingIdsRef.current.delete(obj.id);
+          }
+        });
+
+        // Detect modified objects (modified by others)
+        // DISABLED: Modification notifications not working reliably - needs further debugging
+        // The updatedBy field is still being set, but notifications are disabled for now
+        // TODO: Re-enable after fixing detection logic
+        /*
+        objectsArray.forEach(obj => {
+          const previousObj = previousObjectsRef.current.get(obj.id);
+          if (previousObj && obj.updatedBy) {
+            const updatedByChanged = previousObj.updatedBy !== obj.updatedBy;
+            const updatedByOtherUser = obj.updatedBy !== user.uid;
+            
+            if (updatedByChanged && updatedByOtherUser) {
+              const modifierUser = onlineUsers.get(obj.updatedBy);
+              const userEmail = modifierUser?.email || 'A collaborator';
+              const userColor = modifierUser?.color || '#6366f1';
+              
+              addNotification({
+                type: 'object-modified',
+                userEmail,
+                userColor,
+                message: `modified a ${obj.type}`,
+                shapeType: obj.type,
+              });
+            }
+          }
+        });
+        */
+
+        // Detect deleted objects (deleted by others)
+        previousObjectsRef.current.forEach((obj, id) => {
+          if (!currentIds.has(id) && !userDeletingIdsRef.current.has(id)) {
+            // Object was deleted by another user
+            // Look up user details from presence (try to get the user who last modified it)
+            const deleterUser = onlineUsers.get(obj.createdBy);
+            const userEmail = deleterUser?.email || 'A collaborator';
+            const userColor = deleterUser?.color || '#6366f1';
+            
+            console.log('[CanvasContext] Object deleted by other user:', {
+              objectId: id,
+              type: obj.type,
+              createdBy: obj.createdBy,
+              userEmail,
+              userColor,
+              onlineUsersSize: onlineUsers.size,
+            });
+            
+            addNotification({
+              type: 'object-deleted',
+              userEmail,
+              userColor,
+              message: `deleted a ${obj.type}`,
+              shapeType: obj.type,
+            });
+          }
+          
+          // Remove from userDeletingIdsRef after processing
+          if (userDeletingIdsRef.current.has(id)) {
+            userDeletingIdsRef.current.delete(id);
+          }
+        });
+      }
+
+      // Update previous objects map for next comparison
+      previousObjectsRef.current = new Map(objectsArray.map(obj => [obj.id, obj]));
+
       setObjects(objectsArray);
       setIsLoading(false);
     });
@@ -120,7 +250,9 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
     return () => {
       unsubscribe();
     };
-  }, [canvasId]);
+  }, [canvasId, user, addNotification]);
+  // Note: isLoading is NOT in deps - it's only used inside the effect callback, not as a trigger
+  // Note: onlineUsers is NOT in deps - we only use it for lookups, don't need to re-subscribe when it changes
 
   // Undo helper functions
   const captureUndoSnapshot = (operation: UndoOperationType, affectedIds: string[]) => {
@@ -331,6 +463,9 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
       updatedAt: now,
     } as Shape;
 
+    // Mark this object as being created by current user (to prevent self-notifications)
+    userCreatingIdsRef.current.add(objectId);
+
     // Optimistic update: add to local state immediately
     setObjects((prev) => [...prev, newObject]);
 
@@ -410,6 +545,9 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
         createdAt: now,
         updatedAt: now,
       };
+      
+      // Mark this object as being created by current user (to prevent self-notifications)
+      userCreatingIdsRef.current.add(objectId);
     }
 
     // Single state update for all shapes (1 re-render instead of N)
@@ -445,7 +583,7 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
     setObjects((prev) =>
       prev.map((obj) =>
         obj.id === id
-          ? { ...obj, ...updates, updatedAt: now } as Shape
+          ? { ...obj, ...updates, updatedAt: now, updatedBy: user?.uid } as Shape
           : obj
       )
     );
@@ -455,6 +593,7 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
       await updateFirebaseObject(canvasId, id, {
         ...updates,
         updatedAt: now,
+        updatedBy: user?.uid,
       });
     } catch (error) {
       console.error('Error updating object in Firebase:', error);
@@ -470,7 +609,7 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
     setObjects((prev) =>
       prev.map((obj) =>
         updatesMap.has(obj.id)
-          ? { ...obj, ...updatesMap.get(obj.id)!, updatedAt: now } as Shape
+          ? { ...obj, ...updatesMap.get(obj.id)!, updatedAt: now, updatedBy: user?.uid } as Shape
           : obj
       )
     );
@@ -483,6 +622,7 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
         firebaseUpdates[`${fullPath}/${key}`] = value;
       });
       firebaseUpdates[`${fullPath}/updatedAt`] = now;
+      firebaseUpdates[`${fullPath}/updatedBy`] = user?.uid;
     });
 
     // Single Firebase write for all updates
@@ -500,6 +640,9 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
   const deleteObject = async (ids: string | string[]) => {
     // Normalize to array
     const idsToDelete = Array.isArray(ids) ? ids : [ids];
+    
+    // Mark these objects as being deleted by current user (to prevent self-notifications)
+    idsToDelete.forEach(id => userDeletingIdsRef.current.add(id));
     
     // Capture undo snapshot BEFORE deleting
     captureUndoSnapshot('delete', idsToDelete);
@@ -574,6 +717,283 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
     }
   };
 
+  // Copy selected objects to clipboard
+  const handleCopy = () => {
+    if (selectedIds.length === 0) return;
+    
+    const selectedObjects = objects.filter(obj => selectedIds.includes(obj.id));
+    
+    setClipboard({
+      objects: selectedObjects,
+      pasteOffset: 0, // Reset offset when copying new objects
+    });
+    
+    const count = selectedObjects.length;
+    showToast(`${count} object${count !== 1 ? 's' : ''} copied`, 'success');
+  };
+
+  // Paste objects from clipboard
+  const handlePaste = async (viewportCenter?: { x: number; y: number }) => {
+    if (clipboard.objects.length === 0 || !user) return;
+    
+    // Calculate the center of the copied objects
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    
+    clipboard.objects.forEach(obj => {
+      if (obj.type === 'rectangle') {
+        minX = Math.min(minX, obj.x);
+        minY = Math.min(minY, obj.y);
+        maxX = Math.max(maxX, obj.x + obj.width);
+        maxY = Math.max(maxY, obj.y + obj.height);
+      } else if (obj.type === 'circle') {
+        minX = Math.min(minX, obj.centerX - obj.radius);
+        minY = Math.min(minY, obj.centerY - obj.radius);
+        maxX = Math.max(maxX, obj.centerX + obj.radius);
+        maxY = Math.max(maxY, obj.centerY + obj.radius);
+      } else if (obj.type === 'line') {
+        minX = Math.min(minX, obj.x);
+        minY = Math.min(minY, obj.y);
+        maxX = Math.max(maxX, obj.x + obj.width);
+        maxY = Math.max(maxY, obj.y);
+      } else if (obj.type === 'text') {
+        minX = Math.min(minX, obj.x);
+        minY = Math.min(minY, obj.y);
+        // Approximate text bounds
+        const textWidth = obj.text.length * obj.fontSize * 0.6;
+        const textHeight = obj.fontSize * 1.2;
+        maxX = Math.max(maxX, obj.x + textWidth);
+        maxY = Math.max(maxY, obj.y + textHeight);
+      }
+    });
+    
+    const groupCenterX = (minX + maxX) / 2;
+    const groupCenterY = (minY + maxY) / 2;
+    
+    // Calculate offset to paste at viewport center
+    // If viewportCenter is provided, use it; otherwise use incremental offset (fallback)
+    let offsetX: number, offsetY: number;
+    
+    if (viewportCenter) {
+      // Paste at viewport center
+      offsetX = viewportCenter.x - groupCenterX;
+      offsetY = viewportCenter.y - groupCenterY;
+    } else {
+      // Fallback: incremental offset from original position
+      const offset = (clipboard.pasteOffset + 1) * 20;
+      offsetX = offset;
+      offsetY = offset;
+    }
+    
+    // Prepare all objects for batch creation
+    const now = Date.now();
+    const objectsRef = ref(database, `objects/${canvasId}`);
+    const newShapes: Shape[] = [];
+    const firebaseUpdates: Record<string, any> = {};
+    const newIds: string[] = [];
+    
+    // Clone and prepare all objects with calculated offset
+    for (const obj of clipboard.objects) {
+      const newObjectRef = push(objectsRef);
+      const newId = newObjectRef.key;
+      if (!newId) continue;
+      
+      let newObject: Shape;
+      
+      // Clone based on shape type and apply offset
+      if (obj.type === 'rectangle') {
+        newObject = {
+          ...obj,
+          id: newId,
+          x: obj.x + offsetX,
+          y: obj.y + offsetY,
+          createdBy: user.uid,
+          createdAt: now,
+          updatedAt: now,
+        };
+      } else if (obj.type === 'circle') {
+        newObject = {
+          ...obj,
+          id: newId,
+          centerX: obj.centerX + offsetX,
+          centerY: obj.centerY + offsetY,
+          createdBy: user.uid,
+          createdAt: now,
+          updatedAt: now,
+        };
+      } else if (obj.type === 'line') {
+        newObject = {
+          ...obj,
+          id: newId,
+          x: obj.x + offsetX,
+          y: obj.y + offsetY,
+          createdBy: user.uid,
+          createdAt: now,
+          updatedAt: now,
+        };
+      } else {
+        // text
+        newObject = {
+          ...obj,
+          id: newId,
+          x: obj.x + offsetX,
+          y: obj.y + offsetY,
+          createdBy: user.uid,
+          createdAt: now,
+          updatedAt: now,
+        };
+      }
+      
+      newShapes.push(newObject);
+      newIds.push(newId);
+      
+      // Mark this object as being created by current user (to prevent self-notifications)
+      userCreatingIdsRef.current.add(newId);
+      
+      // Prepare Firebase update path
+      firebaseUpdates[`objects/${canvasId}/${newId}`] = newObject;
+    }
+    
+    // Single optimistic state update for all shapes (1 re-render instead of N)
+    setObjects(prev => [...prev, ...newShapes]);
+    
+    // Single Firebase batch write for all shapes
+    try {
+      const { update } = await import('firebase/database');
+      await update(ref(database), firebaseUpdates);
+    } catch (error) {
+      console.error('Error creating pasted objects:', error);
+      // Rollback optimistic update on error
+      const idsSet = new Set(newIds);
+      setObjects(prev => prev.filter(obj => !idsSet.has(obj.id)));
+      showToast('Failed to paste objects', 'error');
+      return;
+    }
+    
+    // Select pasted objects (this highlights them)
+    setSelectedIds(newIds);
+    
+    // Increment paste offset (only used for fallback)
+    setClipboard(prev => ({
+      ...prev,
+      pasteOffset: prev.pasteOffset + 1,
+    }));
+    
+    showToast('Pasted', 'success');
+  };
+
+  // Cut objects (copy then delete)
+  const handleCut = async () => {
+    if (selectedIds.length === 0) return;
+    
+    // Copy to clipboard
+    const selectedObjects = objects.filter(obj => selectedIds.includes(obj.id));
+    setClipboard({
+      objects: selectedObjects,
+      pasteOffset: 0,
+    });
+    
+    // Delete selected objects
+    await deleteSelected();
+  };
+
+  // Duplicate objects with fixed offset
+  const handleDuplicate = async () => {
+    if (selectedIds.length === 0 || !user) return;
+    
+    const selectedObjects = objects.filter(obj => selectedIds.includes(obj.id));
+    const DUPLICATE_OFFSET = 50; // Fixed offset
+    
+    // Prepare all objects for batch creation
+    const now = Date.now();
+    const objectsRef = ref(database, `objects/${canvasId}`);
+    const newShapes: Shape[] = [];
+    const firebaseUpdates: Record<string, any> = {};
+    const newIds: string[] = [];
+    
+    // Clone and prepare all objects with fixed offset
+    for (const obj of selectedObjects) {
+      const newObjectRef = push(objectsRef);
+      const newId = newObjectRef.key;
+      if (!newId) continue;
+      
+      let newObject: Shape;
+      
+      // Clone based on shape type and apply offset
+      if (obj.type === 'rectangle') {
+        newObject = {
+          ...obj,
+          id: newId,
+          x: obj.x + DUPLICATE_OFFSET,
+          y: obj.y + DUPLICATE_OFFSET,
+          createdBy: user.uid,
+          createdAt: now,
+          updatedAt: now,
+        };
+      } else if (obj.type === 'circle') {
+        newObject = {
+          ...obj,
+          id: newId,
+          centerX: obj.centerX + DUPLICATE_OFFSET,
+          centerY: obj.centerY + DUPLICATE_OFFSET,
+          createdBy: user.uid,
+          createdAt: now,
+          updatedAt: now,
+        };
+      } else if (obj.type === 'line') {
+        newObject = {
+          ...obj,
+          id: newId,
+          x: obj.x + DUPLICATE_OFFSET,
+          y: obj.y + DUPLICATE_OFFSET,
+          createdBy: user.uid,
+          createdAt: now,
+          updatedAt: now,
+        };
+      } else {
+        // text
+        newObject = {
+          ...obj,
+          id: newId,
+          x: obj.x + DUPLICATE_OFFSET,
+          y: obj.y + DUPLICATE_OFFSET,
+          createdBy: user.uid,
+          createdAt: now,
+          updatedAt: now,
+        };
+      }
+      
+      newShapes.push(newObject);
+      newIds.push(newId);
+      
+      // Mark this object as being created by current user (to prevent self-notifications)
+      userCreatingIdsRef.current.add(newId);
+      
+      // Prepare Firebase update path
+      firebaseUpdates[`objects/${canvasId}/${newId}`] = newObject;
+    }
+    
+    // Single optimistic state update for all shapes (1 re-render instead of N)
+    setObjects(prev => [...prev, ...newShapes]);
+    
+    // Single Firebase batch write for all shapes
+    try {
+      const { update } = await import('firebase/database');
+      await update(ref(database), firebaseUpdates);
+    } catch (error) {
+      console.error('Error creating duplicated objects:', error);
+      // Rollback optimistic update on error
+      const idsSet = new Set(newIds);
+      setObjects(prev => prev.filter(obj => !idsSet.has(obj.id)));
+      showToast('Failed to duplicate objects', 'error');
+      return;
+    }
+    
+    // Select duplicated objects
+    setSelectedIds(newIds);
+    
+    showToast('Duplicated', 'success');
+  };
+
   const contextValue: CanvasContextType = {
     objects,
     selectedIds,
@@ -591,6 +1011,10 @@ export const CanvasContextProvider = ({ children, canvasId }: CanvasContextProvi
     selectMultiple,
     clearSelection,
     deleteSelected,
+    handleCopy,
+    handlePaste,
+    handleCut,
+    handleDuplicate,
     undo,
     redo,
     captureUndoSnapshot,

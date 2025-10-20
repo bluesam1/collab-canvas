@@ -8,6 +8,8 @@ import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { AIAssistantButton } from '../components/ai/AIAssistantButton';
 import { AIChatPanel } from '../components/ai/AIChatPanel';
 import { Logo } from '../components/common/Logo';
+import { ConnectionIndicator } from '../components/common/ConnectionIndicator';
+import { NotificationContainer } from '../components/common/NotificationContainer';
 import { getCanvas, updateLastOpened, renameCanvas } from '../utils/canvases';
 import { useToast } from '../hooks/useToast';
 import { useCanvasList } from '../hooks/useCanvasList';
@@ -263,6 +265,11 @@ export function CanvasEditorPage() {
     navigate('/');
   };
 
+  const handleExport = () => {
+    // Dispatch event to Canvas component to trigger export
+    window.dispatchEvent(new CustomEvent('export-canvas'));
+  };
+
   const handleNameClick = () => {
     if (isOwner) {
       setEditedName(canvasName);
@@ -314,6 +321,60 @@ export function CanvasEditorPage() {
       inputRef.current.select();
     }
   }, [isEditingName]);
+
+  // Keyboard shortcuts (Cmd/Ctrl+E/C/V/X/D)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isMod = e.metaKey || e.ctrlKey;
+      
+      // Export (Cmd/Ctrl+E)
+      if (isMod && e.key === 'e') {
+        e.preventDefault();
+        handleExport();
+      }
+      
+      // Copy (Cmd/Ctrl+C)
+      if (isMod && e.key === 'c' && canvasContext && canvasContext.selectedIds.length > 0) {
+        e.preventDefault();
+        canvasContext.handleCopy();
+      }
+      
+      // Paste (Cmd/Ctrl+V)
+      if (isMod && e.key === 'v' && canvasContext) {
+        e.preventDefault();
+        const viewportCenter = getViewportCenter();
+        canvasContext.handlePaste(viewportCenter);
+      }
+      
+      // Cut (Cmd/Ctrl+X)
+      if (isMod && e.key === 'x' && canvasContext && canvasContext.selectedIds.length > 0) {
+        e.preventDefault();
+        canvasContext.handleCut();
+      }
+      
+      // Duplicate (Cmd/Ctrl+D)
+      if (isMod && e.key === 'd' && canvasContext && canvasContext.selectedIds.length > 0) {
+        e.preventDefault();
+        canvasContext.handleDuplicate();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [canvasContext, viewportTransform]); // Include viewportTransform to update when viewport changes
+
+  // Listen for toolbar paste event
+  useEffect(() => {
+    const handleToolbarPaste = () => {
+      if (canvasContext) {
+        const viewportCenter = getViewportCenter();
+        canvasContext.handlePaste(viewportCenter);
+      }
+    };
+
+    window.addEventListener('toolbar-paste', handleToolbarPaste);
+    return () => window.removeEventListener('toolbar-paste', handleToolbarPaste);
+  }, [canvasContext, viewportTransform]);
 
   // AI handlers
   const handleAISubmit = async (command: string) => {
@@ -654,6 +715,7 @@ export function CanvasEditorPage() {
         onBackToCanvasList={handleBackToCanvasList}
         onFrameSelected={handleFrameSelected}
         onDeleteSelected={() => deleteWithEffectFuncRef.current?.()}
+        onExport={handleExport}
         currentZoom={viewportTransform.scale}
         onZoomIn={handleZoomIn}
         onZoomOut={handleZoomOut}
@@ -688,6 +750,12 @@ export function CanvasEditorPage() {
 
       {/* AI Info Modal */}
       {/* Removed as per edit hint */}
+
+      {/* Connection Indicator - always visible in bottom right (50% opacity when connected) */}
+      <ConnectionIndicator />
+      
+      {/* Notification Container - activity notifications in top-right */}
+      <NotificationContainer />
     </div>
   );
 }
