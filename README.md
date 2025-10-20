@@ -49,30 +49,54 @@ A real-time collaborative canvas application where multiple users can create, se
 
 ## 🚀 Quick Start
 
+**Prerequisites**: You need a Firebase project with Authentication, Realtime Database, and Hosting enabled. See [Prerequisites](#-prerequisites) section below.
+
 ```bash
 # 1. Clone the repository
 git clone <repository-url>
 cd collab-canvas
 
-# 2. Install dependencies
+# 2. Install dependencies (frontend and functions)
 npm install
+cd functions && npm install && cd ..
 
-# 3. Create .env file with your Firebase credentials
+# 3. Set up Firebase project (see Setup Instructions section)
+# - Create Firebase project
+# - Enable Authentication, Realtime Database, and Hosting
+# - Copy Firebase config
+
+# 4. Create .env file with your Firebase credentials
 cp .env.example .env
 # Edit .env with your Firebase config
 
-# 4. Run development server
+# 5. (Optional) Set up AI features - create functions/.env.local
+# OPENAI_API_KEY=sk-your-key-here
+# OPENAI_MODEL=gpt-4-turbo-preview
+
+# 6. Apply Firebase security rules
+firebase deploy --only database
+
+# 7. Run development server
 npm run dev
 
-# 5. Open http://localhost:5173 in your browser
+# 8. Open http://localhost:5173 in your browser
 ```
 
 ## 📋 Prerequisites
 
 - Node.js (v18 or higher)
 - npm or yarn
-- Firebase account (free tier works)
 - Git (for version control)
+- **Firebase Project** with the following services enabled:
+  - **Authentication** (Email/Password and Google Sign-In)
+  - **Realtime Database** (with security rules configured)
+  - **Hosting** (for deployment)
+  - **Functions** (optional, for AI features - requires Blaze plan)
+  - Note: Free tier (Spark Plan) works for basic features, Blaze plan (pay-as-you-go) required for Cloud Functions
+- **OpenAI API Account** (optional, for AI Canvas Agent features):
+  - Required only if you want to use the AI assistant
+  - Get your API key from [OpenAI Platform](https://platform.openai.com/api-keys)
+  - Requires OpenAI account with credits ($5+ recommended for testing)
 
 ## 🏗️ Architecture Overview
 
@@ -151,18 +175,35 @@ cd collab-canvas
 
 ### 2. Install Dependencies
 
+Install dependencies for both the frontend and Firebase Functions:
+
 ```bash
+# Install frontend dependencies
 npm install
+
+# Install Firebase Functions dependencies
+cd functions
+npm install
+cd ..
 ```
 
 ### 3. Firebase Configuration
 
+**IMPORTANT**: You must have a Firebase project with Authentication, Realtime Database, and Hosting enabled.
+
 1. Create a new Firebase project at [Firebase Console](https://console.firebase.google.com/)
-2. Enable **Realtime Database** in the Firebase console
+2. Enable **Realtime Database**:
+   - Go to Realtime Database in the Firebase console
+   - Click "Create Database"
+   - Start in test mode (you'll apply security rules next)
 3. Enable **Authentication** methods:
-   - Email/Password (for email link authentication)
-   - Google Sign-In
-4. Copy your Firebase configuration
+   - Go to Authentication → Sign-in method
+   - Enable **Email/Password** (for email link authentication)
+   - Enable **Google Sign-In**
+4. Enable **Hosting**:
+   - Go to Hosting in the Firebase console
+   - Click "Get Started" and follow the setup
+5. Copy your Firebase configuration from Project Settings
 
 ### 4. Environment Variables
 
@@ -180,36 +221,78 @@ VITE_FIREBASE_APP_ID=your_app_id
 
 **Note**: Never commit the `.env` file to version control! Use `.env.example` as a template.
 
-### 5. Firebase Security Rules
+### 5. Firebase Functions Environment Variables (Required for AI Features)
 
-Set up Realtime Database security rules in the Firebase console:
+To use the AI Canvas Agent, you need to set up OpenAI API credentials for Firebase Functions:
 
-```json
-{
-  "rules": {
-    ".read": "auth != null",
-    ".write": "auth != null",
-    "objects": {
-      ".read": "auth != null",
-      ".write": "auth != null"
-    },
-    "presence": {
-      ".read": "auth != null",
-      "$uid": {
-        ".write": "$uid === auth.uid"
-      }
-    }
-  }
-}
+Create a `functions/.env.local` file with your OpenAI API key:
+
+```bash
+# In the functions directory
+cd functions
+cat > .env.local << EOF
+OPENAI_API_KEY=sk-your-openai-api-key-here
+OPENAI_MODEL=gpt-4-turbo-preview
+EOF
+cd ..
 ```
 
-### 6. Run the Development Server
+Or manually create `functions/.env.local` with:
 
+```env
+OPENAI_API_KEY=sk-your-openai-api-key-here
+OPENAI_MODEL=gpt-4-turbo-preview
+```
+
+**Where to get your OpenAI API key:**
+1. Go to [OpenAI API Keys](https://platform.openai.com/api-keys)
+2. Sign in or create an account
+3. Click "Create new secret key"
+4. Copy the key (starts with `sk-`)
+5. Add it to `functions/.env.local`
+
+**Note**: 
+- Never commit `.env.local` to version control!
+- This file is only for local development with Firebase emulators
+- For production deployment, see the [Deploying AI Functions](#deploying-ai-functions) section below
+
+### 6. Firebase Security Rules
+
+The database security rules are defined in `database.rules.json` at the project root. To apply them:
+
+**Option 1: Deploy via Firebase CLI** (recommended):
+```bash
+firebase deploy --only database
+```
+
+**Option 2: Manual setup via Firebase Console**:
+1. Go to Firebase Console → Realtime Database → Rules
+2. Copy the contents of `database.rules.json`
+3. Paste into the Rules editor
+4. Click "Publish"
+
+### 7. Run the Development Server
+
+**Option A: Without AI Features** (frontend only):
 ```bash
 npm run dev
 ```
 
+**Option B: With AI Features** (requires Firebase emulators):
+```bash
+# Terminal 1: Start Firebase emulators (with AI functions)
+npm run emulators
+
+# Terminal 2: Start frontend dev server
+npm run dev
+```
+
 The app will be available at `http://localhost:5173`
+
+**Note**: To use AI features locally, you must:
+1. Have `functions/.env.local` configured with your OpenAI API key
+2. Run the Firebase emulators (`npm run emulators`)
+3. Set `VITE_USE_FUNCTIONS_EMULATOR=true` in your root `.env` file
 
 ## Development Scripts
 
@@ -556,7 +639,7 @@ firebase login
 3. **Verify Firebase Configuration**:
    - Check that `.firebaserc` has your project ID
    - Ensure `firebase.json` has correct hosting settings
-   - Verify `database.rules.json` is up to date
+   - Verify `database.rules.json` contains the security rules (this file is deployed automatically with `firebase deploy`)
 
 4. **Build the Production Bundle**:
 ```bash
@@ -583,13 +666,64 @@ firebase deploy --only hosting
 firebase deploy --only database
 ```
 
+### Deploying AI Functions
+
+To deploy Firebase Functions with AI capabilities, you need to set environment variables in production.
+
+#### Setting Environment Variables for Production
+
+**Option 1: Using Firebase CLI** (Recommended):
+
+```bash
+# Set the OpenAI API key for production
+firebase functions:config:set openai.api_key="sk-your-openai-api-key-here"
+firebase functions:config:set openai.model="gpt-4-turbo-preview"
+
+# Verify the config is set
+firebase functions:config:get
+
+# Deploy functions with the new config
+firebase deploy --only functions
+```
+
+**Option 2: Using Firebase Console**:
+
+1. Go to [Firebase Console](https://console.firebase.google.com/)
+2. Select your project
+3. Navigate to **Functions** → **Configuration**
+4. Add environment variables:
+   - `OPENAI_API_KEY`: Your OpenAI API key
+   - `OPENAI_MODEL`: `gpt-4-turbo-preview`
+
+**Important Notes:**
+- Environment variables in Firebase Functions use a different format than local `.env.local` files
+- The Firebase CLI stores config as `openai.api_key` (dot notation) but your code should access it as `process.env.OPENAI_API_KEY`
+- Make sure your `functions/src/ai/openai.ts` reads from the correct environment variable
+- After setting config, you must redeploy functions: `firebase deploy --only functions`
+
+#### Deploy Everything (Hosting + Database + Functions):
+
+```bash
+# Deploy all services at once
+firebase deploy
+
+# Or deploy specific services
+firebase deploy --only hosting,database,functions
+```
+
 #### Post-Deployment Checklist
 
 After deployment, verify the following:
 - [ ] Visit the deployed URL and check if it loads
 - [ ] Test authentication (both email link and Google Sign-In)
 - [ ] Verify authorized domains in Firebase Console → Authentication → Settings → Authorized domains
-- [ ] Test rectangle creation and real-time sync
+- [ ] Test shape creation and real-time sync
+- [ ] **Test AI Features** (if deployed):
+  - [ ] Open AI assistant panel (✨ icon)
+  - [ ] Try a simple command like "Create a blue rectangle"
+  - [ ] Verify AI responds and creates shapes
+  - [ ] Check Firebase Console → Functions → Logs for any errors
+  - [ ] Verify environment variables are set correctly
 - [ ] Open in multiple browsers/tabs to test multiplayer features
 - [ ] Check browser console for any errors
 - [ ] Test on different browsers (Chrome, Firefox, Safari)
@@ -1018,8 +1152,9 @@ See the planning documents for potential features in future iterations:
   - Check that environment variables are present during build
 
 - **Problem**: Database rules not working
-  - Run `firebase deploy --only database` to update rules
-  - Verify rules in Firebase Console → Realtime Database → Rules
+  - Ensure `database.rules.json` exists in project root
+  - Run `firebase deploy --only database` to deploy rules from the file
+  - Verify rules are applied in Firebase Console → Realtime Database → Rules
   - Test rules using the Rules playground in Firebase Console
 
 ### Performance Issues
@@ -1044,6 +1179,37 @@ See the planning documents for potential features in future iterations:
   - Ensure cursor updates are being sent (check Network tab)
   - Check that throttling is not blocking updates
   - Verify cursors are rendered in the correct layer
+
+### AI Functions Issues
+
+- **Problem**: AI assistant not responding (local development)
+  - Verify `functions/.env.local` exists and contains your OpenAI API key
+  - Ensure Firebase emulators are running (`npm run emulators`)
+  - Check that `VITE_USE_FUNCTIONS_EMULATOR=true` is set in your root `.env` file
+  - Look for errors in the emulator logs
+  - Verify you have `cd functions && npm install` to install function dependencies
+
+- **Problem**: AI assistant not responding (production)
+  - Check Firebase Console → Functions → Logs for errors
+  - Verify environment variables are set:
+    ```bash
+    firebase functions:config:get
+    ```
+  - Ensure functions are deployed: `firebase deploy --only functions`
+  - Check that your OpenAI API key is valid and has credits
+  - Verify authorized domains include your hosting domain
+
+- **Problem**: "Function not found" error
+  - Ensure functions are deployed: `firebase deploy --only functions`
+  - Check `functions/lib/index.js` was built correctly
+  - Verify Firebase Functions is enabled in your Firebase project
+  - Check Firebase Console → Functions to see if functions are listed
+
+- **Problem**: OpenAI API errors
+  - Verify your API key is correct and starts with `sk-`
+  - Check your OpenAI account has available credits
+  - Verify the model name is correct (`gpt-4-turbo-preview`)
+  - Check OpenAI API status: https://status.openai.com/
 
 ## Contributing
 

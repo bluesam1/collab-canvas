@@ -126,7 +126,7 @@ export function CanvasCard({ canvas, onRename, onDelete, onLeave, onCopyLink, on
                 e.stopPropagation();
                 setShowMenu(!showMenu);
               }}
-              className="opacity-0 group-hover:opacity-100 p-2 rounded-lg hover:bg-gray-100 transition-all duration-200 shadow-sm hover:shadow"
+              className="opacity-40 group-hover:opacity-100 p-2 rounded-lg hover:bg-gray-100 transition-all duration-200 shadow-sm hover:shadow"
               title="Canvas options"
             >
               <svg className="w-5 h-5 text-gray-600" fill="currentColor" viewBox="0 0 20 20">

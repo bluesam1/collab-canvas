@@ -17,8 +17,6 @@ export const NotificationContextProvider = ({ children }: NotificationContextPro
 
   // Add a new notification
   const addNotification = useCallback((notification: Omit<Notification, 'id' | 'timestamp'>) => {
-    console.log('[NotificationContext] Adding notification:', notification);
-    
     const newNotification: Notification = {
       ...notification,
       id: generateId(),
@@ -26,7 +24,6 @@ export const NotificationContextProvider = ({ children }: NotificationContextPro
     };
 
     setNotifications(prev => {
-      console.log('[NotificationContext] Current notifications:', prev.length, 'Adding new one');
       // Keep only the 3 most recent notifications (oldest dismissed automatically)
       const updated = [...prev, newNotification];
       return updated.slice(-3);
